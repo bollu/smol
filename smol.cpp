@@ -173,6 +173,9 @@ struct EditorState {
     
 } g_editor_state;
 
+mu_Id editor_state_mu_id(mu_Context *ctx, EditorState* ed) {
+ return mu_get_id(ctx, &ed, sizeof(ed));
+}
 
 void editor_state_move_left(EditorState& s) {
     s.loc.col = std::max<int>(s.loc.col - 1, 0);
@@ -290,12 +293,10 @@ void mu_editor(mu_Context* ctx, EditorState *ed) {
     mu_Font font = ctx->style->font;
     mu_Color color = ctx->style->colors[MU_COLOR_TEXT];
 
-    mu_Id id = mu_get_id(ctx, &ed, sizeof(ed));
-    // hash the *pointer*.
+    mu_Id id = editor_state_mu_id(ctx, ed); 
     mu_Container* cnt = mu_get_current_container(ctx);
     assert(cnt && "must be within container");
 
-    
 	mu_update_control(ctx, id, cnt->body, MU_OPT_HOLDFOCUS);
 	if (ctx->focus == id) {
         if (ctx->key_pressed & MU_KEY_RETURN) {
@@ -347,7 +348,14 @@ void mu_editor(mu_Context* ctx, EditorState *ed) {
         mu_draw_text(ctx, font, lineno_str, strlen(lineno_str), mu_vec2(r.x, r.y), color);
         // line number width
         r.x += ctx->text_width(font, lineno_str, strlen(lineno_str));
-        if (l >= ed->contents.size()) { continue; }
+        if (l > ed->contents.size()) { continue; }
+        if (l == ed->contents.size()) {
+            if (ed->loc.line == l) {
+                mu_draw_cursor(ctx, &r);
+            }
+            continue;
+        }
+        assert(l < ed->contents.size());
         const char* word = ed->contents[l].c_str();
         r.h = ctx->text_height(font);
         for (int i = 0; i < ed->contents[l].size(); ++i) {
@@ -363,7 +371,7 @@ void mu_editor(mu_Context* ctx, EditorState *ed) {
 		}
 
         // cursor
-        if (ctx->focus == id && ed->loc.line == l && ed->loc.col == ed->contents[l].size()) {
+        if (ed->loc.line == l && ed->loc.col == ed->contents[l].size()) {
             mu_draw_cursor(ctx, &r);
         }
     }
@@ -373,7 +381,8 @@ void mu_editor(mu_Context* ctx, EditorState *ed) {
 
 
 static void editor_window(mu_Context* ctx) {
-    if (mu_begin_window(ctx, "Editor", mu_rect(0, 0, (1400 * 2) / 3, 768))) {
+    const int window_opts = MU_OPT_NOFRAME | MU_OPT_NOTITLE | MU_OPT_NOCLOSE | MU_OPT_NORESIZE;
+    if (mu_begin_window_ex(ctx, "Editor", mu_rect(0, 0, (1400 * 2) / 3, 768), window_opts)) {
         /* output text panel */
         int width_row[] = { -1 };
         mu_layout_row(ctx, 1, width_row, -25);
@@ -382,6 +391,9 @@ static void editor_window(mu_Context* ctx) {
         mu_layout_row(ctx, 1, width_row, -1);
         // TODO: look at mu_textbox to see how to handle input.
         mu_editor(ctx, &g_editor_state);
+        // find a better way to make this the focus?
+        // TODO: find less jank approach to make this focused at start time.
+        mu_set_focus(ctx, editor_state_mu_id(ctx, &g_editor_state));
         mu_end_panel(ctx);
         //if (logbuf_updated) {
         //    panel->scroll.y = panel->content_size.y;
@@ -459,7 +471,7 @@ static void process_frame(mu_Context* ctx) {
     // fprintf(stderr, "mu_begin?\n");
     mu_finalize_events_begin_draw(ctx);
     // style_window(ctx);
-    log_window(ctx);
+    // log_window(ctx);
     // test_window(ctx);
     editor_window(ctx);
     mu_end(ctx);
@@ -519,6 +531,9 @@ int main(int argc, char** argv) {
     mu_init(ctx, text_width, text_height);
     ctx->text_width = text_width;
     ctx->text_height = text_height;
+
+    // vv this does not work to set focus at beginning :( 
+    // mu_set_focus(ctx, editor_state_mu_id(ctx, &g_editor_state));
 
     /* main loop */
     for (;;) {
