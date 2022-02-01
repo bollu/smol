@@ -215,19 +215,36 @@ void mu_editor(mu_Context* ctx, EditorState *ed) {
 
     mu_layout_begin_column(ctx);
     mu_layout_row(ctx, 1, &width, ctx->text_height(font));
-	mu_draw_control_frame(ctx, id, cnt->body, MU_COLOR_BASE, 0);
+	// mu_draw_control_frame(ctx, id, cnt->body, MU_COLOR_BASE, 0);
     const int MAX_LINES = 20;
     for (int l = 0; l < MAX_LINES; ++l) {
         mu_Rect r = mu_layout_next(ctx);
-        char line_number_buf[3];
-        itoa(l, line_number_buf, 10);
-        mu_draw_text(ctx, font, line_number_buf, strlen(line_number_buf), mu_vec2(r.x, r.y), color);
+        char lineno_str[12];
+        itoa(l, lineno_str, 10);
+        const int total_len = 5;
+        const int num_len = strlen(lineno_str);
+        for (int i = num_len; i < total_len; ++i) {
+            lineno_str[i] = ' ';
+        }
+        lineno_str[total_len] = 0;
+        lineno_str[total_len + 1] = 0;
+        mu_draw_text(ctx, font, lineno_str, strlen(lineno_str), mu_vec2(r.x, r.y), color);
         // line number width
-        r.x += ctx->text_width(font, line_number_buf, strlen(line_number_buf));
+        r.x += ctx->text_width(font, lineno_str, strlen(lineno_str));
         if (l >= ed->contents.size()) { continue; }
         const char* word = ed->contents[l].c_str();
         r.h = ctx->text_height(font);
-		mu_draw_text(ctx, font, ed->contents[l].c_str(), ed->contents[l].size(), mu_vec2(r.x, r.y), color);
+        for (int i = 0; i < ed->contents[l].size(); ++i) {
+            mu_draw_text(ctx, font, ed->contents[l].c_str()+ i, 1, mu_vec2(r.x, r.y), color);
+            r.x += ctx->text_width(font, ed->contents[l].c_str() + i, 1);
+		}
+
+        // cursor
+        if (ctx->focus == id && ed->loc.line == l && ed->loc.col == ed->contents[l].size()) {
+            mu_Rect cursor = r;
+            r.w = 1;
+            mu_draw_rect(ctx, r, ctx->style->colors[MU_COLOR_TEXT]);
+        }
     }
 
     mu_layout_end_column(ctx);
