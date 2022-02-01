@@ -174,6 +174,37 @@ struct EditorState {
 } g_editor_state;
 
 
+void editor_state_move_left(EditorState& s) {
+    s.loc.col = std::max<int>(s.loc.col - 1, 0);
+}
+
+
+void editor_state_move_right(EditorState& s) {
+    assert(s.loc.line <= s.contents.size());
+    if (s.loc.line == s.contents.size()) { return; }
+    const std::string& curline = s.contents[s.loc.line];
+    s.loc.col = std::min<int>(s.loc.col + 1, curline.size());
+}
+
+void editor_state_move_up(EditorState& s) {
+    s.loc.line = std::max<int>(s.loc.line - 1, 0);
+}
+
+
+void editor_state_move_down(EditorState& s) {
+    s.loc.line = std::min<int>(s.loc.line + 1, s.contents.size());
+}
+
+
+void editor_state_enter_char(EditorState& s) {
+    assert(s.loc.line <= s.contents.size());
+    if (s.loc.line == s.contents.size()) {
+        s.contents.push_back("");
+        s.loc.line++;
+    }
+
+}
+
 void editor_state_backspace_char(EditorState& s) {
     assert(s.loc.line <= s.contents.size());
     if (s.loc.line == s.contents.size()) { return; }
@@ -182,7 +213,7 @@ void editor_state_backspace_char(EditorState& s) {
     if (s.loc.col == 0) { return; }
     // think about what happens with [s.loc.col=1]. Rest will work.
     std::string tafter(curline.begin() + s.loc.col, curline.end());
-    curline.resize(s.loc.col - 1); // need to remove col[0]
+    curline.resize(s.loc.col - 1); // need to remove col[0], so resize to length 0.
     curline += tafter;
     s.loc.col--;
 }
@@ -208,6 +239,13 @@ void editor_state_insert_char(EditorState &s, char c) {
     }
 }
 
+void mu_draw_cursor(mu_Context* ctx, mu_Rect* r) {
+	const int CURSOR_WIDTH = 3;
+	mu_Rect cursor = *r;
+	cursor.w = CURSOR_WIDTH;
+	mu_draw_rect(ctx, cursor, ctx->style->colors[MU_COLOR_TEXT]);
+	r->w += CURSOR_WIDTH;
+}
 void mu_editor(mu_Context* ctx, EditorState *ed) {
     int width = -1;
     mu_Font font = ctx->style->font;
@@ -221,6 +259,18 @@ void mu_editor(mu_Context* ctx, EditorState *ed) {
     
 	mu_update_control(ctx, id, cnt->body, MU_OPT_HOLDFOCUS);
 	if (ctx->focus == id) {
+        if (ctx->key_pressed & MU_KEY_RETURN) {
+            editor_state_enter_char(*ed);
+        }
+
+        if (ctx->key_pressed & MU_KEY_LEFTARROW) {
+            editor_state_move_left(*ed);
+        }
+
+
+        if (ctx->key_pressed & MU_KEY_RIGHTARROW) {
+            editor_state_move_right(*ed);
+        }
 
         if (ctx->key_pressed & MU_KEY_BACKSPACE) {
             editor_state_backspace_char(*ed); 
@@ -237,6 +287,7 @@ void mu_editor(mu_Context* ctx, EditorState *ed) {
     const int MAX_LINES = 20;
     for (int l = 0; l < MAX_LINES; ++l) {
         mu_Rect r = mu_layout_next(ctx);
+
         char lineno_str[12];
         itoa(l, lineno_str, 10);
         const int total_len = 5;
@@ -253,15 +304,20 @@ void mu_editor(mu_Context* ctx, EditorState *ed) {
         const char* word = ed->contents[l].c_str();
         r.h = ctx->text_height(font);
         for (int i = 0; i < ed->contents[l].size(); ++i) {
+			if (ctx->focus == id && 
+                ed->loc.line == l && 
+                ed->loc.col == i) {
+				mu_draw_cursor(ctx, &r);
+			}
+
             mu_draw_text(ctx, font, ed->contents[l].c_str()+ i, 1, mu_vec2(r.x, r.y), color);
             r.x += ctx->text_width(font, ed->contents[l].c_str() + i, 1);
+
 		}
 
         // cursor
         if (ctx->focus == id && ed->loc.line == l && ed->loc.col == ed->contents[l].size()) {
-            mu_Rect cursor = r;
-            r.w = 3;
-            mu_draw_rect(ctx, r, ctx->style->colors[MU_COLOR_TEXT]);
+            mu_draw_cursor(ctx, &r);
         }
     }
 
@@ -385,6 +441,11 @@ int key_map(int sdl_key) {
     if (sdl_key == SDLK_LALT) return MU_KEY_ALT;
     if (sdl_key == SDLK_RALT) return MU_KEY_ALT;
     if (sdl_key == SDLK_RETURN) return MU_KEY_RETURN;
+    if (sdl_key == SDLK_UP) return MU_KEY_UPARROW;
+    if (sdl_key == SDLK_DOWN) return MU_KEY_DOWNARROW;
+    if (sdl_key == SDLK_LEFT) return MU_KEY_LEFTARROW;
+    if (sdl_key == SDLK_RIGHT) return MU_KEY_RIGHTARROW;
+
     if (sdl_key == SDLK_BACKSPACE) return MU_KEY_BACKSPACE;
     return 0;
 
@@ -433,7 +494,9 @@ int main(int argc, char** argv) {
 
             case SDL_KEYDOWN:
             case SDL_KEYUP: {
-                int c = key_map(e.key.keysym.sym & 0xff);
+                // vv bollu: I don't know why this was masked.
+                // int c = key_map(e.key.keysym.sym & 0xff);
+                int c = key_map(e.key.keysym.sym);
                 if (c && e.type == SDL_KEYDOWN) { mu_input_keydown(ctx, c); }
                 if (c && e.type == SDL_KEYUP) { mu_input_keyup(ctx, c); }
                 break;
