@@ -7,6 +7,7 @@
 #include "sdl/include/SDL_keycode.h"
 #include <string>
 #include <vector>
+#include <cassert>
 
 static  char logbuf[64000];
 static   int logbuf_updated = 0;
@@ -147,6 +148,7 @@ static void log_window(mu_Context* ctx) {
         int widths[] = {-70, -1};
         mu_layout_row(ctx, 2, widths, 0);
         if (mu_textbox(ctx, buf, sizeof(buf)) & MU_RES_SUBMIT) {
+            assert(false && "text submitted");
             mu_set_focus(ctx, ctx->last_id);
             submitted = 1;
         }
@@ -167,35 +169,67 @@ struct Cursor{
 
 struct EditorState {
     std::vector<std::string> contents;
-    Cursor location;
+    Cursor loc;
     
 } g_editor_state;
 
-void mu_editor(mu_Context* ctx, EditorState *state) {
+
+void editor_state_insert_char(EditorState &s, char c) {
+    assert(s.loc.line <= s.contents.size());
+    if (s.loc.line == s.contents.size()) {
+        s.contents.push_back(std::string());
+    }
+    std::string& curline = s.contents[s.loc.line];
+    assert(s.loc.col <= curline.size());
+    if (s.loc.col == curline.size()) {
+        curline += c;
+        s.loc.col += 1;
+    } else {
+        // think at [col=0]. will work everywhere else.
+        std::string t(curline.begin() + s.loc.col, curline.end());
+        curline.resize(s.loc.col);
+        curline += c;
+        curline += t;
+        s.loc.col += 1;
+    }
+}
+
+void mu_editor(mu_Context* ctx, EditorState *ed) {
     int width = -1;
     mu_Font font = ctx->style->font;
     mu_Color color = ctx->style->colors[MU_COLOR_TEXT];
+
+    mu_Id id = mu_get_id(ctx, &ed, sizeof(ed));
+    // hash the *pointer*.
+    mu_Container* cnt = mu_get_current_container(ctx);
+    assert(cnt && "must be within container");
+
+    
+	mu_update_control(ctx, id, cnt->body, MU_OPT_HOLDFOCUS);
+	if (ctx->focus == id) {
+		/* handle key press. stolen from mu_textbox_raw */
+		for (int i = 0; i < strlen(ctx->input_text); ++i) {
+			editor_state_insert_char(*ed, ctx->input_text[i]);
+		}
+	}
+
     mu_layout_begin_column(ctx);
     mu_layout_row(ctx, 1, &width, ctx->text_height(font));
+	mu_draw_control_frame(ctx, id, cnt->body, MU_COLOR_BASE, 0);
     const int MAX_LINES = 20;
-    for (int l = 0; l < MAX_LINES; ++l) { 
+    for (int l = 0; l < MAX_LINES; ++l) {
         mu_Rect r = mu_layout_next(ctx);
-        int w = 0;
         char line_number_buf[3];
         itoa(l, line_number_buf, 10);
         mu_draw_text(ctx, font, line_number_buf, strlen(line_number_buf), mu_vec2(r.x, r.y), color);
+        // line number width
         r.x += ctx->text_width(font, line_number_buf, strlen(line_number_buf));
-        if (l >= state->contents.size()) { continue;  }
-		const char* word = state->contents[l].c_str();
-        for (int i = 0; i < state->contents[l].size();) {
-			const char* word_end = state->contents[l].c_str();
-            while (*word_end && *word_end != ' ') { word_end++; }
-            w += ctx->text_width(font, word, word_end - word);
-            w += ctx->text_width(font, word_end, 1); // wtf? this looks dodgy
-            word = word_end + 1;
-        } 
-        mu_draw_text(ctx, font, state->contents[l].c_str(), state->contents[l].size(), mu_vec2(r.x, r.y), color);
-    } 
+        if (l >= ed->contents.size()) { continue; }
+        const char* word = ed->contents[l].c_str();
+        r.h = ctx->text_height(font);
+		mu_draw_text(ctx, font, ed->contents[l].c_str(), ed->contents[l].size(), mu_vec2(r.x, r.y), color);
+    }
+
     mu_layout_end_column(ctx);
 }
 
@@ -287,7 +321,7 @@ static void process_frame(mu_Context* ctx) {
     // fprintf(stderr, "mu_begin?\n");
     mu_finalize_events_begin_draw(ctx);
     // style_window(ctx);
-    // log_window(ctx);
+    log_window(ctx);
     // test_window(ctx);
     editor_window(ctx);
     mu_end(ctx);
