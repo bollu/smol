@@ -174,8 +174,22 @@ struct EditorState {
 } g_editor_state;
 
 
+void editor_state_backspace_char(EditorState& s) {
+    assert(s.loc.line <= s.contents.size());
+    if (s.loc.line == s.contents.size()) { return; }
+    std::string& curline = s.contents[s.loc.line];
+    assert(s.loc.col <= curline.size());
+    if (s.loc.col == 0) { return; }
+    // think about what happens with [s.loc.col=1]. Rest will work.
+    std::string tafter(curline.begin() + s.loc.col, curline.end());
+    curline.resize(s.loc.col - 1); // need to remove col[0]
+    curline += tafter;
+    s.loc.col--;
+}
+
 void editor_state_insert_char(EditorState &s, char c) {
     assert(s.loc.line <= s.contents.size());
+
     if (s.loc.line == s.contents.size()) {
         s.contents.push_back(std::string());
     }
@@ -207,6 +221,10 @@ void mu_editor(mu_Context* ctx, EditorState *ed) {
     
 	mu_update_control(ctx, id, cnt->body, MU_OPT_HOLDFOCUS);
 	if (ctx->focus == id) {
+
+        if (ctx->key_pressed & MU_KEY_BACKSPACE) {
+            editor_state_backspace_char(*ed); 
+        }
 		/* handle key press. stolen from mu_textbox_raw */
 		for (int i = 0; i < strlen(ctx->input_text); ++i) {
 			editor_state_insert_char(*ed, ctx->input_text[i]);
@@ -242,7 +260,7 @@ void mu_editor(mu_Context* ctx, EditorState *ed) {
         // cursor
         if (ctx->focus == id && ed->loc.line == l && ed->loc.col == ed->contents[l].size()) {
             mu_Rect cursor = r;
-            r.w = 1;
+            r.w = 3;
             mu_draw_rect(ctx, r, ctx->style->colors[MU_COLOR_TEXT]);
         }
     }
