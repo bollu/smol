@@ -188,11 +188,25 @@ void editor_state_move_right(EditorState& s) {
 
 void editor_state_move_up(EditorState& s) {
     s.loc.line = std::max<int>(s.loc.line - 1, 0);
+    if (s.loc.line < s.contents.size()) {
+		 // can this be modeled as a connection on a bundle?
+        s.loc.col = std::min<int>(s.loc.col, s.contents[s.loc.line].size());
+    } else {
+        assert(s.loc.line == s.contents.size());
+        s.loc.col = 0;
+    }
 }
 
 
 void editor_state_move_down(EditorState& s) {
     s.loc.line = std::min<int>(s.loc.line + 1, s.contents.size());
+    if (s.loc.line < s.contents.size()) {
+		 // can this be modeled as a connection on a bundle?
+        s.loc.col = std::min<int>(s.loc.col, s.contents[s.loc.line].size());
+    } else {
+        assert(s.loc.line == s.contents.size());
+        s.loc.col = 0;
+    }
 }
 
 
@@ -201,8 +215,18 @@ void editor_state_enter_char(EditorState& s) {
     if (s.loc.line == s.contents.size()) {
         s.contents.push_back("");
         s.loc.line++;
+        s.loc.col = 0;
+        return;
     }
-
+    assert(s.loc.line < s.contents.size());
+    std::string& curline = s.contents[s.loc.line];
+    // think about [col=0].
+    std::string nextline(curline.begin() + s.loc.col, curline.end());
+    curline.resize(s.loc.col); 
+    s.contents.push_back(nextline);
+    s.loc.line++;
+    s.loc.col = 0;
+    return;
 }
 
 void editor_state_backspace_char(EditorState& s) {
@@ -210,12 +234,27 @@ void editor_state_backspace_char(EditorState& s) {
     if (s.loc.line == s.contents.size()) { return; }
     std::string& curline = s.contents[s.loc.line];
     assert(s.loc.col <= curline.size());
-    if (s.loc.col == 0) { return; }
-    // think about what happens with [s.loc.col=1]. Rest will work.
-    std::string tafter(curline.begin() + s.loc.col, curline.end());
-    curline.resize(s.loc.col - 1); // need to remove col[0], so resize to length 0.
-    curline += tafter;
-    s.loc.col--;
+    if (s.loc.col == 0) {
+        if (s.loc.line == 0) {
+            return;
+        }
+        // delete the line. think about [line=1]
+        std::string& prevline = s.contents[s.loc.line - 1];
+        const int new_cursor_col = prevline.size();
+        const std::string& curline = s.contents[s.loc.line];
+        prevline += curline;
+
+        s.contents.erase(s.contents.begin() + s.loc.line);
+        s.loc.line--;
+        s.loc.col = new_cursor_col;
+    }
+    else {
+        // think about what happens with [s.loc.col=1]. Rest will work.
+        std::string tafter(curline.begin() + s.loc.col, curline.end());
+        curline.resize(s.loc.col - 1); // need to remove col[0], so resize to length 0.
+        curline += tafter;
+        s.loc.col--;
+    }
 }
 
 void editor_state_insert_char(EditorState &s, char c) {
@@ -263,10 +302,18 @@ void mu_editor(mu_Context* ctx, EditorState *ed) {
             editor_state_enter_char(*ed);
         }
 
+        if (ctx->key_pressed & MU_KEY_UPARROW) {
+            editor_state_move_up(*ed);
+        }
+
+        if (ctx->key_pressed & MU_KEY_DOWNARROW) {
+            editor_state_move_down(*ed);
+        }
+
+
         if (ctx->key_pressed & MU_KEY_LEFTARROW) {
             editor_state_move_left(*ed);
         }
-
 
         if (ctx->key_pressed & MU_KEY_RIGHTARROW) {
             editor_state_move_right(*ed);

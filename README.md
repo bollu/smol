@@ -10,3 +10,6 @@ A tiny language with tiny memory footprint for human size **prototyping**.
 - Common lisp-like REPL interface that permits hot reloading. Maintains
   history across reloads. Is possible because `smol`.
 - Can exhaustively check invariants about function spaces. Because `smol`.
+
+
+- https://github.com/benwr/glean
