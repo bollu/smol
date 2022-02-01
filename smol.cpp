@@ -6,6 +6,7 @@
 #include "string.h"
 #include "sdl/include/SDL_keycode.h"
 #include <string>
+#include <vector>
 
 static  char logbuf[64000];
 static   int logbuf_updated = 0;
@@ -164,47 +165,43 @@ struct Cursor{
     int line; int col;
 };
 
-struct EditorContents {
-    std::string buf;
-
-    const char* begin() const {
-        return buf.c_str();
-    }
-};
 struct EditorState {
-    EditorContents content;
+    std::vector<std::string> contents;
     Cursor location;
     
 } g_editor_state;
 
 void mu_editor(mu_Context* ctx, EditorState *state) {
-    const char* start, * end, * p = state->content.begin();
     int width = -1;
     mu_Font font = ctx->style->font;
     mu_Color color = ctx->style->colors[MU_COLOR_TEXT];
     mu_layout_begin_column(ctx);
     mu_layout_row(ctx, 1, &width, ctx->text_height(font));
-    do {
+    const int MAX_LINES = 20;
+    for (int l = 0; l < MAX_LINES; ++l) { 
         mu_Rect r = mu_layout_next(ctx);
         int w = 0;
-        start = end = p;
-        do {
-            const char* word = p;
-            while (*p && *p != ' ' && *p != '\n') { p++; }
-            w += ctx->text_width(font, word, p - word);
-            if (w > r.w && end != start) { break; }
-            w += ctx->text_width(font, p, 1);
-            end = p++;
-        } while (*end && *end != '\n');
-        mu_draw_text(ctx, font, start, end - start, mu_vec2(r.x, r.y), color);
-        p = end + 1;
-    } while (*end);
+        char line_number_buf[3];
+        itoa(l, line_number_buf, 10);
+        mu_draw_text(ctx, font, line_number_buf, strlen(line_number_buf), mu_vec2(r.x, r.y), color);
+        r.x += ctx->text_width(font, line_number_buf, strlen(line_number_buf));
+        if (l >= state->contents.size()) { continue;  }
+		const char* word = state->contents[l].c_str();
+        for (int i = 0; i < state->contents[l].size();) {
+			const char* word_end = state->contents[l].c_str();
+            while (*word_end && *word_end != ' ') { word_end++; }
+            w += ctx->text_width(font, word, word_end - word);
+            w += ctx->text_width(font, word_end, 1); // wtf? this looks dodgy
+            word = word_end + 1;
+        } 
+        mu_draw_text(ctx, font, state->contents[l].c_str(), state->contents[l].size(), mu_vec2(r.x, r.y), color);
+    } 
     mu_layout_end_column(ctx);
 }
 
 
 static void editor_window(mu_Context* ctx) {
-    if (mu_begin_window(ctx, "Editor", mu_rect(0, 0, 1280, 720))) {
+    if (mu_begin_window(ctx, "Editor", mu_rect(0, 0, (1400 * 2) / 3, 768))) {
         /* output text panel */
         int width_row[] = { -1 };
         mu_layout_row(ctx, 1, width_row, -25);
