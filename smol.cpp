@@ -300,11 +300,14 @@ void editor_state_insert_char(EditorState &s, char c) {
 }
 
 void mu_draw_cursor(mu_Context* ctx, mu_Rect* r) {
-	const int CURSOR_WIDTH = 3;
+	// const int CURSOR_WIDTH = 3;
 	mu_Rect cursor = *r;
-	cursor.w = CURSOR_WIDTH;
-	mu_draw_rect(ctx, cursor, ctx->style->colors[MU_COLOR_TEXT]);
-	r->w += CURSOR_WIDTH;
+	// cursor.w = CURSOR_WIDTH;
+    mu_Font font = ctx->style->font;
+    const int width = r_get_text_width("|", 1);
+    mu_draw_text(ctx, font, "|", 1, mu_vec2(r->x - width/2, r->y), ctx->style->colors[MU_COLOR_TEXT]);
+    r->w += width;
+	// mu_draw_rect(ctx, cursor, ctx->style->colors[MU_COLOR_TEXT]);
 }
 
 

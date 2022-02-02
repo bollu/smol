@@ -205,7 +205,7 @@ def serialize_atlas(ATLAS: Atlas) -> str:
             out += "  [MU_ICON_COLLAPSED] = { %s, %s, %s, %s },\n" % (r.x, r.y, r.w, r.h)
 
         # TODO: make an actual white color
-        if b.encoding == ord('*'):
+        if b.encoding == ord('|'):
             out += "  [ATLAS_WHITE] = { %s, %s, %s, %s },\n" % (r.x, r.y, r.w, r.h)
 
 

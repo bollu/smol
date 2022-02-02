@@ -19,7 +19,6 @@ static mu_Rect atlas[] = {
   [ATLAS_FONT + 40] = { 0, 128, 8, 16},
   [ATLAS_FONT + 41] = { 0, 144, 8, 16},
   [ATLAS_FONT + 42] = { 0, 160, 8, 16},
-  [ATLAS_WHITE] = { 0, 160, 8, 16 },
   [ATLAS_FONT + 43] = { 0, 176, 8, 16},
   [ATLAS_FONT + 44] = { 0, 192, 8, 16},
   [ATLAS_FONT + 45] = { 0, 208, 8, 16},
@@ -106,6 +105,7 @@ static mu_Rect atlas[] = {
   [ATLAS_FONT + 122] = { 0, 1440, 8, 16},
   [ATLAS_FONT + 123] = { 0, 1456, 8, 16},
   [ATLAS_FONT + 124] = { 0, 1472, 8, 16},
+  [ATLAS_WHITE] = { 0, 1472, 8, 16 },
   [ATLAS_FONT + 125] = { 0, 1488, 8, 16},
   [ATLAS_FONT + 126] = { 0, 1504, 8, 16},
 };
