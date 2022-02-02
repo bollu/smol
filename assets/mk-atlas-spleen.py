@@ -23,6 +23,8 @@ class Bitmap:
 
 # 0003C000
 # read as (00) (03) (C0) (00)
+# each pixel is 0-255.
+# 256 = ^8 = (2^4)^2 = 2 hex characters per pixel.
 def read_hex(raw_str: str) -> List[str]:
     assert len(raw_str) % 2 == 0
     out = []
@@ -78,7 +80,9 @@ def fileparse(f):
         # argparse bitmap until 
         BITMAP = []
         for _ in range(HEIGHT):
-            BITMAP.append(read_hex(lines[i]))
+            row = read_hex(lines[i])
+            assert len(row) == WIDTH//8
+            BITMAP.append(row)
             i += 1
         print("  " + "\n  ".join(map(str, BITMAP)))
         print("---")
@@ -102,7 +106,6 @@ class Atlas:
 
 
 
-
 def make_atlas(BITMAPS: List[Bitmap], ATLAS_WIDTH: int, BITMAP_WIDTH: int, BITMAP_HEIGHT: int) -> Atlas:
     # vvv HACK! This is because for whatever reason, though 
     # the bitmap width is 32, the grid only contains 4 hex values!!
@@ -117,30 +120,30 @@ def make_atlas(BITMAPS: List[Bitmap], ATLAS_WIDTH: int, BITMAP_WIDTH: int, BITMA
     # 00000000
     # 00000000
     # ==
-    BITMAP_WIDTH_ENTRIES = (BITMAPS[0].width + 8 - 1) // 8
-
-    assert ATLAS_WIDTH % BITMAP_WIDTH_ENTRIES == 0
-    bitmaps_per_x = ATLAS_WIDTH // BITMAP_WIDTH_ENTRIES
-    # ceiling of total number of bitmaps divided by bitmaps per row
+    assert ATLAS_WIDTH % BITMAP_WIDTH == 0
+    bitmaps_per_x = ATLAS_WIDTH // BITMAP_WIDTH
     atlas_num_bitmaps_in_y = (len(BITMAPS) + bitmaps_per_x - 1) // bitmaps_per_x
     ATLAS_HEIGHT = atlas_num_bitmaps_in_y * BITMAP_HEIGHT
 
     # atlas[y][x]
-    atlas = [[0 for _ in range(ATLAS_WIDTH)] for _ in range(ATLAS_HEIGHT)]
+    atlas = [[None for _ in range(ATLAS_WIDTH//8)] for _ in range(ATLAS_HEIGHT)]
     bitmap2rect = {}
 
     (x, y) = (0, 0) # for filling in atlas
     for b in BITMAPS:
         # vvv HACK on the width!
-        bitmap2rect[b.name] = Rect(x, y, BITMAP_WIDTH_ENTRIES, BITMAP_HEIGHT)
-        assert x + BITMAP_WIDTH_ENTRIES <= ATLAS_WIDTH
+        bitmap2rect[b.name] = Rect(x, y, BITMAP_WIDTH, BITMAP_HEIGHT)
+        assert x + BITMAP_WIDTH//8 <= ATLAS_WIDTH // 8
         assert y + BITMAP_HEIGHT <= ATLAS_HEIGHT
+        assert len(b.bitmap) == BITMAP_HEIGHT
         for dy in range(BITMAP_HEIGHT):
-            for dx in range(BITMAP_WIDTH_ENTRIES):
+            assert len(b.bitmap[dy]) == BITMAP_WIDTH // 8
+            for dx in range(BITMAP_WIDTH//8):
                 v = b.bitmap[dy][dx]
                 atlas[y + dy][x + dx] = v
-        x += BITMAP_WIDTH_ENTRIES
-        if x == ATLAS_WIDTH:
+
+        x += BITMAP_WIDTH//8
+        if x == ATLAS_WIDTH // 8:
             x = 0
             y += BITMAP_HEIGHT
     return Atlas(ATLAS_WIDTH, ATLAS_HEIGHT, BITMAPS, bitmap2rect, atlas)
@@ -160,14 +163,14 @@ def serialize_atlas(ATLAS: Atlas) -> str:
     # 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     first_write = True
 
-    texture_data = ["0x0" for _ in range(ATLAS.width * ATLAS.height)]
+    texture_data = [None for _ in range((ATLAS.width //8) * ATLAS.height)]
     for y in range(ATLAS.height):
-        for x in range(ATLAS.width):
-            texture_data[y * ATLAS.width + x] = f"0x{ATLAS.atlas[y][x]}"
+        for x in range(ATLAS.width // 8):
+            texture_data[x + y * (ATLAS.width // 8)] = f"0x{ATLAS.atlas[y][x]}"
 
 
-    out += "static unsigned char atlas_texture[ATLAS_WIDTH * ATLAS_HEIGHT] = {\n";
-    for i in range(ATLAS.width * ATLAS.height):
+    out += "static unsigned char atlas_texture[] = {\n";
+    for i in range((ATLAS.width //8) * ATLAS.height):
         out += texture_data[i] +  ", "
     out += "\n};\n"
 
@@ -215,7 +218,7 @@ def filter_bitmaps(BITMAPS: List[Bitmap]) -> List[Bitmap]:
     return out
 
 if __name__ == "__main__":
-    ATLAS_WIDTH = 1
+    ATLAS_WIDTH = 8
     BITMAP_WIDTH = 8
     BITMAP_HEIGHT = 16
     PATH = argparse("spleen-8x16.bdf")
