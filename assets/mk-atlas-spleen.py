@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # make an atlas from the spleen family of fonts:
 # https://raw.githubusercontent.com/fcambus/spleen/master/spleen-32x64.bdf
+# https://github.com/farsil/ibmfonts/blob/master/bdf/ib8x16u.bdf
 from os import waitpid, walk, write
 import re
 import sys
@@ -223,10 +224,10 @@ def filter_bitmaps(BITMAPS: List[Bitmap]) -> List[Bitmap]:
     return out
 
 if __name__ == "__main__":
-    BITMAP_WIDTH = 12
+    BITMAP_WIDTH = 8
     ATLAS_WIDTH = BITMAP_WIDTH
-    BITMAP_HEIGHT = 24
-    PATH = argparse("spleen-12x24.bdf")
+    BITMAP_HEIGHT = 16
+    PATH = argparse("spleen-8x16.bdf")
     assert PATH
     with open(PATH) as f:
         BITMAPS = fileparse(f)
