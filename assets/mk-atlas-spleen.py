@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # make an atlas from the spleen family of fonts:
 # https://raw.githubusercontent.com/fcambus/spleen/master/spleen-32x64.bdf
-from os import waitpid, walk
+from os import waitpid, walk, write
 import re
 import sys
 from typing import List, Dict
@@ -31,11 +31,9 @@ def read_hex(raw_str: str) -> List[str]:
         raw_str = raw_str[2:]
     return out
 
-def argparse():
-    PATH = None
+def argparse(PATH):
     if len(sys.argv) != 2:
         print("usage: mk-atlas.py <path/to/spleen-font.bdf>")
-        PATH = "spleen-32x64.bdf"
         print(f"using default font: {PATH}")
     else:
         PATH = sys.argv[1]
@@ -119,7 +117,7 @@ def make_atlas(BITMAPS: List[Bitmap], ATLAS_WIDTH: int, BITMAP_WIDTH: int, BITMA
     # 00000000
     # 00000000
     # ==
-    BITMAP_WIDTH = 4;
+    BITMAP_WIDTH = (BITMAPS[0].width + 8 - 1) // 8
 
     assert ATLAS_WIDTH % BITMAP_WIDTH == 0
     bitmaps_per_x = ATLAS_WIDTH // BITMAP_WIDTH
@@ -158,8 +156,14 @@ def serialize_atlas(ATLAS: Atlas) -> str:
     # static unsigned char atlas_texture[ATLAS_WIDTH * ATLAS_HEIGHT] = {
     # 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     # 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    first_write = True
+
     for y in range(ATLAS.height):
-        out += ", ".join(f"0x{val}" for val in ATLAS.atlas[y]) + "," + "\n"
+        for x in range(ATLAS.width):
+            if not first_write:
+                out += ","
+            first_write = False
+            out += f"0x{ATLAS.atlas[y][x]}"
     out += "};\n"
 
     # static mu_Rect atlas[] = {
@@ -208,9 +212,9 @@ def filter_bitmaps(BITMAPS: List[Bitmap]) -> List[Bitmap]:
 
 if __name__ == "__main__":
     ATLAS_WIDTH = 128
-    BITMAP_WIDTH = 32
-    BITMAP_HEIGHT = 64
-    PATH = argparse()
+    BITMAP_WIDTH = 8
+    BITMAP_HEIGHT = 16
+    PATH = argparse("spleen-8x16.bdf")
     assert PATH
     with open(PATH) as f:
         BITMAPS = fileparse(f)
@@ -220,6 +224,8 @@ if __name__ == "__main__":
     BITMAPS = filter_bitmaps(BITMAPS)
     ATLAS = make_atlas(BITMAPS, ATLAS_WIDTH, BITMAP_WIDTH, BITMAP_HEIGHT)
     OUT = serialize_atlas(ATLAS)
-    with open("../microui/atlas.inl", "w") as f:
+    # with open("../microui/atlas.inl", "w") as f:
+    with open("atlas.inl", "w") as f:
         f.write(OUT)
+    print("copy atlas.inl to ../microui/atlas.inl")
 
