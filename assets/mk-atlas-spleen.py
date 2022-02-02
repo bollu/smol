@@ -128,7 +128,7 @@ def make_atlas(BITMAPS: List[Bitmap], ATLAS_WIDTH: int, BITMAP_WIDTH: int, BITMA
     ATLAS_HEIGHT = atlas_num_bitmaps_in_y * BITMAP_HEIGHT
 
     # atlas[y][x]
-    atlas = [[None for _ in range(ATLAS_WIDTH)] for _ in range(ATLAS_HEIGHT)]
+    atlas = [["ATLAS_NONE" for _ in range(ATLAS_WIDTH)] for _ in range(ATLAS_HEIGHT)]
     bitmap2rect = {}
 
     (x, y) = (0, 0) # for filling in atlas
@@ -145,7 +145,7 @@ def make_atlas(BITMAPS: List[Bitmap], ATLAS_WIDTH: int, BITMAP_WIDTH: int, BITMA
                 for bitix in range(8):
                     bv = 255 if bool(v & (1 << bitix)) else 0
                     # for whatever reason, I need to horizonally mirror.
-                    atlas[y + dy][x + dx + (7 - bitix)] = bv
+                    atlas[y + dy][x + 8 * dx + (7 - bitix)] = bv
         x += BITMAP_WIDTH
         if x == ATLAS_WIDTH:
             x = 0
@@ -167,7 +167,7 @@ def serialize_atlas(ATLAS: Atlas) -> str:
     # 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     first_write = True
 
-    texture_data = [None for _ in range(ATLAS.width * ATLAS.height)]
+    texture_data = ["ATLAS_TEXTURE_NONE" for _ in range(ATLAS.width * ATLAS.height)]
     for y in range(ATLAS.height):
         for x in range(ATLAS.width):
             texture_data[x + y * (ATLAS.width)] = ATLAS.atlas[y][x]
@@ -176,6 +176,7 @@ def serialize_atlas(ATLAS: Atlas) -> str:
     out += "static unsigned char atlas_texture[] = {\n";
     for i in range(ATLAS.width * ATLAS.height):
         out += str(texture_data[i]) +  ", "
+        if i % 12 == 0: out += "\n  "
     out += "\n};\n"
 
     # static mu_Rect atlas[] = {
@@ -222,10 +223,10 @@ def filter_bitmaps(BITMAPS: List[Bitmap]) -> List[Bitmap]:
     return out
 
 if __name__ == "__main__":
-    ATLAS_WIDTH = 8
-    BITMAP_WIDTH = 8
-    BITMAP_HEIGHT = 16
-    PATH = argparse("spleen-8x16.bdf")
+    ATLAS_WIDTH = 32
+    BITMAP_WIDTH = 32
+    BITMAP_HEIGHT = 64
+    PATH = argparse("spleen-32x64.bdf")
     assert PATH
     with open(PATH) as f:
         BITMAPS = fileparse(f)
