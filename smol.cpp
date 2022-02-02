@@ -173,6 +173,10 @@ struct EditorState {
     
 } g_editor_state;
 
+struct CommandPaletteState {
+    int selected;
+} g_command_palette_state;
+
 mu_Id editor_state_mu_id(mu_Context *ctx, EditorState* ed) {
  return mu_get_id(ctx, &ed, sizeof(ed));
 }
@@ -226,7 +230,12 @@ void editor_state_enter_char(EditorState& s) {
     // think about [col=0].
     std::string nextline(curline.begin() + s.loc.col, curline.end());
     curline.resize(s.loc.col); 
-    s.contents.push_back(nextline);
+    // TODO: fix --- this is broken.
+    s.contents.push_back(std::string());
+    for (int i = s.contents.size() - 1; i > s.loc.line + 1; i--) {
+        s.contents[i] = s.contents[i - 1];
+    }
+    s.contents[s.loc.line+1] = nextline;
     s.loc.line++;
     s.loc.col = 0;
     return;
@@ -234,7 +243,13 @@ void editor_state_enter_char(EditorState& s) {
 
 void editor_state_backspace_char(EditorState& s) {
     assert(s.loc.line <= s.contents.size());
-    if (s.loc.line == s.contents.size()) { return; }
+    if (s.loc.line == s.contents.size()) { 
+        if (s.loc.line == 0) { return; }
+        s.loc.line--;
+        s.loc.col = s.contents[s.loc.line].size();
+        return;
+    }
+
     std::string& curline = s.contents[s.loc.line];
     assert(s.loc.col <= curline.size());
     if (s.loc.col == 0) {
@@ -247,9 +262,12 @@ void editor_state_backspace_char(EditorState& s) {
         const std::string& curline = s.contents[s.loc.line];
         prevline += curline;
 
-        s.contents.erase(s.contents.begin() + s.loc.line);
+        for (int i = s.loc.line; i < s.contents.size() - 2; i++) {
+            s.contents[i] = s.contents[i + 1];
+        }
         s.loc.line--;
         s.loc.col = new_cursor_col;
+        s.contents.pop_back();
     }
     else {
         // think about what happens with [s.loc.col=1]. Rest will work.
@@ -288,6 +306,14 @@ void mu_draw_cursor(mu_Context* ctx, mu_Rect* r) {
 	mu_draw_rect(ctx, cursor, ctx->style->colors[MU_COLOR_TEXT]);
 	r->w += CURSOR_WIDTH;
 }
+
+
+
+void mu_command_palette(mu_Context* ctx, CommandPaletteState* pal) {
+
+}
+
+
 void mu_editor(mu_Context* ctx, EditorState *ed) {
     int width = -1;
     mu_Font font = ctx->style->font;
@@ -299,6 +325,7 @@ void mu_editor(mu_Context* ctx, EditorState *ed) {
 
 	mu_update_control(ctx, id, cnt->body, MU_OPT_HOLDFOCUS);
 	if (ctx->focus == id) {
+
         if (ctx->key_pressed & MU_KEY_RETURN) {
             editor_state_enter_char(*ed);
         }
@@ -322,6 +349,10 @@ void mu_editor(mu_Context* ctx, EditorState *ed) {
 
         if (ctx->key_pressed & MU_KEY_BACKSPACE) {
             editor_state_backspace_char(*ed); 
+        }
+        
+		if (ctx->key_down & MU_KEY_CTRL && ctx->key_pressed & MU_KEY_COMMAND_PALETTE) {
+            assert(false && "subl baby");
         }
 		/* handle key press. stolen from mu_textbox_raw */
 		for (int i = 0; i < strlen(ctx->input_text); ++i) {
@@ -495,7 +526,7 @@ int button_map(int sdl_key) {
 int key_map(int sdl_key) {
     if (sdl_key == SDLK_LSHIFT) return MU_KEY_SHIFT;
     if (sdl_key == SDLK_RSHIFT) return MU_KEY_SHIFT;
-    if (sdl_key == SDLK_LCTRL) return MU_KEY_CTRL;
+    if (sdl_key == SDLK_LCTRL) { return MU_KEY_CTRL; }
     if (sdl_key == SDLK_RCTRL) return MU_KEY_CTRL;
     if (sdl_key == SDLK_LALT) return MU_KEY_ALT;
     if (sdl_key == SDLK_RALT) return MU_KEY_ALT;
@@ -504,8 +535,8 @@ int key_map(int sdl_key) {
     if (sdl_key == SDLK_DOWN) return MU_KEY_DOWNARROW;
     if (sdl_key == SDLK_LEFT) return MU_KEY_LEFTARROW;
     if (sdl_key == SDLK_RIGHT) return MU_KEY_RIGHTARROW;
-
     if (sdl_key == SDLK_BACKSPACE) return MU_KEY_BACKSPACE;
+    if (sdl_key == SDLK_p) return MU_KEY_COMMAND_PALETTE;
     return 0;
 
 }
@@ -545,6 +576,7 @@ int main(int argc, char** argv) {
             case SDL_MOUSEMOTION: mu_input_mousemove(ctx, e.motion.x, e.motion.y); break;
             case SDL_MOUSEWHEEL: mu_input_scroll(ctx, 0, e.wheel.y * -30); break;
             case SDL_TEXTINPUT: mu_input_text(ctx, e.text.text); break;
+            // case SDL_TEXTEDITING: mu_input_text(ctx, e.edit.text); break;
 
             case SDL_MOUSEBUTTONDOWN:
             case SDL_MOUSEBUTTONUP: {

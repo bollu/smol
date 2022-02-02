@@ -110,8 +110,10 @@ enum {
   MU_KEY_LEFTARROW    = (1 << 5),
   MU_KEY_RIGHTARROW   = (1 << 6),
   MU_KEY_UPARROW      = (1 << 7),
-  MU_KEY_DOWNARROW    = (1 << 8)
+  MU_KEY_DOWNARROW    = (1 << 8),
+  MU_KEY_COMMAND_PALETTE = (1 << 9),
 };
+
 
 
 typedef struct mu_Context mu_Context;
@@ -216,10 +218,10 @@ struct mu_Context {
   mu_Vec2 last_mouse_pos; // ?
   mu_Vec2 mouse_delta; // ?
   mu_Vec2 scroll_delta; // /?
-  int mouse_down; // whether mouse was clicked down this frame.
-  int mouse_pressed; // whether mouse remains pressed down. Should be MU_MOUSE_* or 0.
-  int key_down; // whether key was clicked down this frame. should be MU_KEY_* or 0.
-  int key_pressed; // whether key remains pressed.
+  int mouse_down; // whether mouse remains held down in this frame OR previous frames. Level trigger.
+  int mouse_pressed; // whether mouse is pressed down this frame. Should be MU_MOUSE_* or 0. Edge trigger.
+  int key_down; // whether key remains held down down in this frame or previous frames. Level trigger. should be MU_KEY_* or 0.
+  int key_pressed; // whether key is pressed this frame. Edge trigger.
   char input_text[32]; // text that was sent as input in this frame.
 };
 

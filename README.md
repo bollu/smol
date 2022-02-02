@@ -13,3 +13,5 @@ A tiny language with tiny memory footprint for human size **prototyping**.
 
 
 - https://github.com/benwr/glean
+- https://github.com/Kindelia/HVM/blob/master/HOW.md
+- https://github.com/lucy/tewi-font
