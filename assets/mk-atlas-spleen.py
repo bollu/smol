@@ -133,6 +133,7 @@ def make_atlas(BITMAPS: List[Bitmap], ATLAS_WIDTH: int, BITMAP_WIDTH: int, BITMA
 
     (x, y) = (0, 0) # for filling in atlas
     for b in BITMAPS:
+        # vvv HACK on the width!
         bitmap2rect[b.name] = Rect(x, y, BITMAP_WIDTH, BITMAP_HEIGHT)
         assert x + BITMAP_WIDTH <= ATLAS_WIDTH
         assert y + BITMAP_HEIGHT <= ATLAS_HEIGHT
@@ -149,6 +150,8 @@ def serialize_atlas(ATLAS: Atlas) -> str:
     # to have C process it as hex.
     out = ""
 
+    out += "static const int atlas_text_height = %s;\n\n" % (ATLAS.bitmaps[0].height, )
+
     out += "enum { ATLAS_WHITE = MU_ICON_MAX, ATLAS_FONT };\n"
     out += "enum { ATLAS_WIDTH = %s, ATLAS_HEIGHT = %s };\n" % (ATLAS.width, ATLAS.height)
     out += "static unsigned char atlas_texture[ATLAS_WIDTH * ATLAS_HEIGHT] = {\n";
@@ -156,7 +159,7 @@ def serialize_atlas(ATLAS: Atlas) -> str:
     # 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     # 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     for y in range(ATLAS.height):
-        out += ", ".join(f"0x{val}" for val in ATLAS.atlas[y]) + "\n"
+        out += ", ".join(f"0x{val}" for val in ATLAS.atlas[y]) + "," + "\n"
     out += "};\n"
 
     # static mu_Rect atlas[] = {
@@ -217,6 +220,6 @@ if __name__ == "__main__":
     BITMAPS = filter_bitmaps(BITMAPS)
     ATLAS = make_atlas(BITMAPS, ATLAS_WIDTH, BITMAP_WIDTH, BITMAP_HEIGHT)
     OUT = serialize_atlas(ATLAS)
-    with open("atlas.inl", "w") as f:
+    with open("../microui/atlas.inl", "w") as f:
         f.write(OUT)
 

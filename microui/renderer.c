@@ -162,7 +162,7 @@ int r_get_text_width(const char *text, int len) {
 
 
 int r_get_text_height(void) {
-  return 18;
+	return atlas_text_height;
 }
 
 
