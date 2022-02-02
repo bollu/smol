@@ -36,12 +36,37 @@ void r_init(void) {
   glEnableClientState(GL_TEXTURE_COORD_ARRAY);
   glEnableClientState(GL_COLOR_ARRAY);
 
-  /* init texture */
+  /* init font texture */
   GLuint id;
   glGenTextures(1, &id);
   glBindTexture(GL_TEXTURE_2D, id);
+  /*
+  // vvvNEW CODE
+  glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+  assert(glGetError() == 0);
+
   glTexImage2D(GL_TEXTURE_2D, 0, GL_ALPHA, ATLAS_WIDTH, ATLAS_HEIGHT, 0,
-    GL_ALPHA, GL_UNSIGNED_BYTE, atlas_texture);
+  GL_ALPHA, GL_UNSIGNED_BYTE, 0);
+
+  assert(glGetError() == 0);
+  
+  for (int i = 32; i < 127; ++i) {
+      // https://en.wikibooks.org/wiki/OpenGL_Programming/Modern_OpenGL_Tutorial_Text_Rendering_02
+      mu_Rect r = atlas[ATLAS_FONT + i];
+	  glTexSubImage2D(GL_TEXTURE_2D, 0, 
+          r.x, r.y, 
+          r.w, r.h,
+          GL_ALPHA, GL_UNSIGNED_BYTE,
+          atlas_offsets[ATLAS_FONT + i] + atlas_texture);
+	 assert(glGetError() == 0);
+  }
+  */
+  // ^^^^^^END^^^^^^^^
+  // vvvvvvOLD CODEvvv
+  // /* new addition to old code: */ glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_ALPHA, ATLAS_WIDTH, ATLAS_HEIGHT, 0,
+  GL_ALPHA, GL_UNSIGNED_BYTE, atlas_texture);
+  // ^^^^
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
   assert(glGetError() == 0);
@@ -162,7 +187,7 @@ int r_get_text_width(const char *text, int len) {
 
 
 int r_get_text_height(void) {
-	return atlas_text_height;
+    return atlas_text_height;
 }
 
 
