@@ -83,7 +83,7 @@ def fileparse(f):
         BITMAP = []
         for _ in range(HEIGHT):
             row = read_hex(lines[i])
-            assert len(row) == WIDTH//8
+            assert len(row) == (WIDTH + 8 - 1)//8
             BITMAP.append(row)
             i += 1
         print("  " + "\n  ".join(map(str, BITMAP)))
@@ -139,13 +139,13 @@ def make_atlas(BITMAPS: List[Bitmap], ATLAS_WIDTH: int, BITMAP_WIDTH: int, BITMA
         assert y + BITMAP_HEIGHT <= ATLAS_HEIGHT
         assert len(b.bitmap) == BITMAP_HEIGHT
         for dy in range(BITMAP_HEIGHT):
-            assert len(b.bitmap[dy]) == BITMAP_WIDTH // 8
-            for dx in range(BITMAP_WIDTH//8):
-                v = b.bitmap[dy][dx]
-                for bitix in range(8):
-                    bv = 255 if bool(v & (1 << bitix)) else 0
-                    # for whatever reason, I need to horizonally mirror.
-                    atlas[y + dy][x + 8 * dx + (7 - bitix)] = bv
+            assert len(b.bitmap[dy]) == (BITMAP_WIDTH + 8 - 1) // 8
+            for dx in range(BITMAP_WIDTH):
+                hexval = b.bitmap[dy][dx//8];
+                bitix = 7 - dx % 8 # endian-ness issues.
+                bitval = bool(hexval & (1 << bitix))
+                out = 255 * int(bitval)
+                atlas[y + dy][x + dx] = out
         x += BITMAP_WIDTH
         if x == ATLAS_WIDTH:
             x = 0
@@ -223,10 +223,10 @@ def filter_bitmaps(BITMAPS: List[Bitmap]) -> List[Bitmap]:
     return out
 
 if __name__ == "__main__":
-    ATLAS_WIDTH = 32
-    BITMAP_WIDTH = 32
-    BITMAP_HEIGHT = 64
-    PATH = argparse("spleen-32x64.bdf")
+    BITMAP_WIDTH = 12
+    ATLAS_WIDTH = BITMAP_WIDTH
+    BITMAP_HEIGHT = 24
+    PATH = argparse("spleen-12x24.bdf")
     assert PATH
     with open(PATH) as f:
         BITMAPS = fileparse(f)
