@@ -117,10 +117,10 @@ def make_atlas(BITMAPS: List[Bitmap], ATLAS_WIDTH: int, BITMAP_WIDTH: int, BITMA
     # 00000000
     # 00000000
     # ==
-    BITMAP_WIDTH = (BITMAPS[0].width + 8 - 1) // 8
+    BITMAP_WIDTH_ENTRIES = (BITMAPS[0].width + 8 - 1) // 8
 
-    assert ATLAS_WIDTH % BITMAP_WIDTH == 0
-    bitmaps_per_x = ATLAS_WIDTH // BITMAP_WIDTH
+    assert ATLAS_WIDTH % BITMAP_WIDTH_ENTRIES == 0
+    bitmaps_per_x = ATLAS_WIDTH // BITMAP_WIDTH_ENTRIES
     # ceiling of total number of bitmaps divided by bitmaps per row
     atlas_num_bitmaps_in_y = (len(BITMAPS) + bitmaps_per_x - 1) // bitmaps_per_x
     ATLAS_HEIGHT = atlas_num_bitmaps_in_y * BITMAP_HEIGHT
@@ -132,15 +132,17 @@ def make_atlas(BITMAPS: List[Bitmap], ATLAS_WIDTH: int, BITMAP_WIDTH: int, BITMA
     (x, y) = (0, 0) # for filling in atlas
     for b in BITMAPS:
         # vvv HACK on the width!
-        bitmap2rect[b.name] = Rect(x, y, BITMAP_WIDTH, BITMAP_HEIGHT)
-        assert x + BITMAP_WIDTH <= ATLAS_WIDTH
+        bitmap2rect[b.name] = Rect(x, y, BITMAP_WIDTH_ENTRIES, BITMAP_HEIGHT)
+        assert x + BITMAP_WIDTH_ENTRIES <= ATLAS_WIDTH
         assert y + BITMAP_HEIGHT <= ATLAS_HEIGHT
         for dy in range(BITMAP_HEIGHT):
-            for dx in range(BITMAP_WIDTH):
+            for dx in range(BITMAP_WIDTH_ENTRIES):
                 v = b.bitmap[dy][dx]
                 atlas[y + dy][x + dx] = v
-        x += BITMAP_WIDTH
-        if x == ATLAS_WIDTH: x = 0; y += dy
+        x += BITMAP_WIDTH_ENTRIES
+        if x == ATLAS_WIDTH:
+            x = 0
+            y += BITMAP_HEIGHT
     return Atlas(ATLAS_WIDTH, ATLAS_HEIGHT, BITMAPS, bitmap2rect, atlas)
 
 def serialize_atlas(ATLAS: Atlas) -> str:
@@ -148,23 +150,26 @@ def serialize_atlas(ATLAS: Atlas) -> str:
     # to have C process it as hex.
     out = ""
 
+    out += "static const int atlas_text_width = %s;\n" % (ATLAS.bitmaps[0].width, )
     out += "static const int atlas_text_height = %s;\n\n" % (ATLAS.bitmaps[0].height, )
-
     out += "enum { ATLAS_WHITE = MU_ICON_MAX, ATLAS_FONT };\n"
     out += "enum { ATLAS_WIDTH = %s, ATLAS_HEIGHT = %s };\n" % (ATLAS.width, ATLAS.height)
-    out += "static unsigned char atlas_texture[ATLAS_WIDTH * ATLAS_HEIGHT] = {\n";
+    
     # static unsigned char atlas_texture[ATLAS_WIDTH * ATLAS_HEIGHT] = {
     # 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     # 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     first_write = True
 
+    texture_data = ["0x0" for _ in range(ATLAS.width * ATLAS.height)]
     for y in range(ATLAS.height):
         for x in range(ATLAS.width):
-            if not first_write:
-                out += ","
-            first_write = False
-            out += f"0x{ATLAS.atlas[y][x]}"
-    out += "};\n"
+            texture_data[y * ATLAS.width + x] = f"0x{ATLAS.atlas[y][x]}"
+
+
+    out += "static unsigned char atlas_texture[ATLAS_WIDTH * ATLAS_HEIGHT] = {\n";
+    for i in range(ATLAS.width * ATLAS.height):
+        out += texture_data[i] +  ", "
+    out += "\n};\n"
 
     # static mu_Rect atlas[] = {
     #   [ MU_ICON_CLOSE ] = { 88, 68, 16, 16 },
@@ -198,7 +203,6 @@ def serialize_atlas(ATLAS: Atlas) -> str:
 
 
     out += "};\n";
-
     return out
 
 
@@ -211,7 +215,7 @@ def filter_bitmaps(BITMAPS: List[Bitmap]) -> List[Bitmap]:
     return out
 
 if __name__ == "__main__":
-    ATLAS_WIDTH = 128
+    ATLAS_WIDTH = 1
     BITMAP_WIDTH = 8
     BITMAP_HEIGHT = 16
     PATH = argparse("spleen-8x16.bdf")
