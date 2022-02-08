@@ -622,7 +622,7 @@ static void draw_frame(mu_Context *ctx, mu_Rect rect, int colorid) {
       colorid == MU_COLOR_SCROLLTHUMB ||
       colorid == MU_COLOR_TITLEBG) { return; }
   /* draw border */
-  if (ctx->style->colors[MU_COLOR_BORDER].a) {
+  if (0 && ctx->style->colors[MU_COLOR_BORDER].a) {
     mu_draw_border_box(ctx, expand_rect(rect, 1), ctx->style->colors[MU_COLOR_BORDER]);
   }
 }

@@ -18,7 +18,7 @@
 #include <format>
 #include <time.h>
 
-const int TARGET_FRAMES_PER_SECOND = 60.0;
+const int TARGET_FRAMES_PER_SECOND = 30.0;
 const clock_t TARGET_CLOCKS_PER_FRAME = CLOCKS_PER_SEC / TARGET_FRAMES_PER_SECOND;
 
 static  char logbuf[64000];
@@ -190,7 +190,8 @@ struct BottomlineState {
 } g_bottom_line_state;
 
 struct CommandPaletteState {
-    int selected;
+    bool open = true;
+    std::string input;
 } g_command_palette_state;
 
 mu_Id editor_state_mu_id(mu_Context *ctx, EditorState* ed) {
@@ -328,7 +329,48 @@ void mu_draw_cursor(mu_Context* ctx, mu_Rect* r) {
 
 
 
-void mu_command_palette(mu_Context* ctx, CommandPaletteState* pal) {
+void mu_command_palette(mu_Context* ctx, CommandPaletteState* state) {
+    if (!state->open) { return; }
+    if (mu_begin_window(ctx, "CMD", mu_Rect(100, 100, 800, 400))) {
+
+
+		// assert(false && "open palette");
+        mu_set_focus(ctx, ctx->last_id);
+
+        if (ctx->key_pressed & MU_KEY_BACKSPACE) {
+            state->input.resize(std::max<int>(0, state->input.size() - 1));
+        }
+
+		// if (ctx->key_pressed & MU_KEY_COMMAND_PALETTE) {
+        //     // TODO: need to debounce.
+        //     g_command_palette_state.open = false;
+        //     g_command_palette_state.input = "";
+        // }
+        
+		if (ctx->key_pressed & MU_KEY_RETURN) {
+            // TODO: need to debounce.
+            g_command_palette_state.open = false;
+            g_command_palette_state.input = "";
+        }
+		/* handle key press. stolen from mu_textbox_raw */
+		state->input += std::string(ctx->input_text);
+        std::cout << "state->input: " << state->input << "\n";
+
+		mu_Font font = ctx->style->font;
+
+		mu_layout_begin_column(ctx);
+        const int width[] = { 800 };
+		mu_layout_row(ctx, 1, width, ctx->text_height(font));
+        mu_Rect r = mu_layout_next(ctx);
+        std::cout << "r.x: " << r.x << " | r.y: " << r.y << "\n";
+		// mu_draw_text(ctx, font, "Command Palette", strlen("Command Palette"), mu_vec2(r.x, r.y), ctx->style->colors[MU_COLOR_TEXT]);
+		// mu_draw_text(ctx, font, state->input.c_str(), state->input.size(), mu_vec2(0, 20), ctx->style->colors[MU_COLOR_TEXT]);
+		mu_draw_text(ctx, font, (state->input + "|").c_str(), state->input.size() + 1, mu_vec2(r.x, r.y), ctx->style->colors[MU_COLOR_TEXT]);
+        mu_layout_end_column(ctx);
+
+        mu_end_window(ctx);
+
+    }
 
 }
 
@@ -350,8 +392,10 @@ void mu_editor(mu_Context* ctx, EditorState *ed) {
     mu_Container* cnt = mu_get_current_container(ctx);
     assert(cnt && "must be within container");
 
+
 	mu_update_control(ctx, id, cnt->body, MU_OPT_HOLDFOCUS);
-	if (ctx->focus == id) {
+    const bool focused = ctx->focus == id;
+	if (focused) {
 
         if (ctx->key_pressed & MU_KEY_RETURN) {
             editor_state_enter_char(*ed);
@@ -364,7 +408,6 @@ void mu_editor(mu_Context* ctx, EditorState *ed) {
         if (ctx->key_pressed & MU_KEY_DOWNARROW) {
             editor_state_move_down(*ed);
         }
-
 
         if (ctx->key_pressed & MU_KEY_LEFTARROW) {
             editor_state_move_left(*ed);
@@ -379,7 +422,9 @@ void mu_editor(mu_Context* ctx, EditorState *ed) {
         }
         
 		if (ctx->key_down & MU_KEY_CTRL && ctx->key_pressed & MU_KEY_COMMAND_PALETTE) {
-            assert(false && "subl baby");
+            // mu_open_popup(ctx, "CMD");
+            g_command_palette_state.open = true;
+            g_command_palette_state.input = "";
         }
 		/* handle key press. stolen from mu_textbox_raw */
 		for (int i = 0; i < strlen(ctx->input_text); ++i) {
@@ -408,7 +453,7 @@ void mu_editor(mu_Context* ctx, EditorState *ed) {
         r.x += ctx->text_width(font, lineno_str, strlen(lineno_str));
         if (l > ed->contents.size()) { continue; }
         if (l == ed->contents.size()) {
-            if (ed->loc.line == l) {
+            if (ed->loc.line == l && focused) {
                 mu_draw_cursor(ctx, &r);
             }
             continue;
@@ -417,7 +462,7 @@ void mu_editor(mu_Context* ctx, EditorState *ed) {
         const char* word = ed->contents[l].c_str();
         r.h = ctx->text_height(font);
         for (int i = 0; i < ed->contents[l].size(); ++i) {
-			if (ctx->focus == id && 
+			if (focused && 
                 ed->loc.line == l && 
                 ed->loc.col == i) {
 				mu_draw_cursor(ctx, &r);
@@ -439,20 +484,21 @@ void mu_editor(mu_Context* ctx, EditorState *ed) {
 
 
 static void editor_window(mu_Context* ctx) {
-    const int window_opts = MU_OPT_NOFRAME | MU_OPT_NOTITLE | MU_OPT_NOCLOSE | MU_OPT_NORESIZE;
-    if (mu_begin_window_ex(ctx, "Editor", mu_rect(0, 0, (1400 * 2) / 3, 768), window_opts)) {
+    const int window_opts =  MU_OPT_NOTITLE | MU_OPT_NOCLOSE | MU_OPT_NORESIZE;
+    // if (mu_begin_window_ex(ctx, "Editor", mu_rect(0, 0, 1400, 768), window_opts)) {
+    if (mu_begin_window(ctx, "Editor", mu_rect(0, 0, 1400, 768))) { 
         /* output text panel */
         int width_row[] = { -1 };
         mu_layout_row(ctx, 1, width_row, -25);
-        mu_begin_panel(ctx, "Log Output");
-        mu_Container* panel = mu_get_current_container(ctx);
+        // mu_begin_panel(ctx, "Log Output");
+        // mu_Container* panel = mu_get_current_container(ctx);
         mu_layout_row(ctx, 1, width_row, -1);
         // TODO: look at mu_textbox to see how to handle input.
         mu_editor(ctx, &g_editor_state);
         // find a better way to make this the focus?
         // TODO: find less jank approach to make this focused at start time.
         mu_set_focus(ctx, editor_state_mu_id(ctx, &g_editor_state));
-        mu_end_panel(ctx);
+        // mu_end_panel(ctx);
 
 		mu_bottom_line(ctx, &g_bottom_line_state);
         //if (logbuf_updated) {
@@ -534,6 +580,7 @@ static void process_frame(mu_Context* ctx) {
     // log_window(ctx);
     // test_window(ctx);
     editor_window(ctx);
+	mu_command_palette(ctx, &g_command_palette_state);
     mu_end(ctx);
 }
 
@@ -647,9 +694,10 @@ struct Task {
 struct TaskIndexFile : public Task {
     std::filesystem::path p;
     std::ifstream file;
+    trie_node* index;
     long long total_size = 1;
     long long cur_size = 1;
-    TaskIndexFile(std::filesystem::path p) : p(p) {
+	TaskIndexFile(trie_node* index, std::filesystem::path p) : index(index), p(p) {
     }
 
     TaskStateKind run(std::stack<Task*>& tasks) {
@@ -693,6 +741,7 @@ struct TaskIndexFile : public Task {
         g_bottom_line_state.info += " | ";
         g_bottom_line_state.info += word;
 
+
         // std::cout << g_bottom_line_state.info << "\n";
 
         // wprintf(L"%ls | %20s | %4.2f\n", p.c_str(), word.c_str(), percent);
@@ -703,8 +752,10 @@ struct TaskIndexFile : public Task {
 };
 
 struct TaskWalkDirectory : public Task {
+    trie_node* index;
     std::filesystem::recursive_directory_iterator it;
-    TaskWalkDirectory(std::filesystem::path root) : it(root) { }
+
+    TaskWalkDirectory(trie_node *index, std::filesystem::path root) : index(index), it(root) { }
 	TaskStateKind run(std::stack<Task*>& tasks) {
         if (it == std::filesystem::end(it)) {
             return TaskStateKind::TSK_DONE;
@@ -712,7 +763,7 @@ struct TaskWalkDirectory : public Task {
         std::filesystem::path curp = *it;
         g_bottom_line_state.info = "walking: " + curp.string();
         if (std::filesystem::is_regular_file(curp)) {
-            tasks.push(new TaskIndexFile(curp));
+            tasks.push(new TaskIndexFile(index, curp));
         }
         ++it;
 
@@ -745,7 +796,7 @@ int main(int argc, char** argv) {
     
     const std::filesystem::path root_path(argc == 1 ? "C:\\Users\\bollu\\phd\\lean4\\src\\" : argv[1]);
     std::cout << "root_path: " << root_path << "\n";
-    g_tasks.push(new TaskWalkDirectory(root_path));
+    g_tasks.push(new TaskWalkDirectory(g_index, root_path));
     g_bottom_line_state.info = "FOO BAR";
 
     SDL_Init(SDL_INIT_EVERYTHING);
