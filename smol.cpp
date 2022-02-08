@@ -18,6 +18,76 @@
 #include <format>
 #include <time.h>
 
+
+// https://15721.courses.cs.cmu.edu/spring2018/papers/09-oltpindexes2/leis-icde2013.pdf
+// Ukkonen
+
+using hash = long long;
+struct file_loc {
+    std::string path;
+    int line;
+    int col;
+
+    // TODO: don't store the string.
+    file_loc(std::string path, int line, int col) : path(path), line(line), col(col) {};
+};
+
+struct trie_node {
+    std::unordered_map<int, trie_node*> next;
+    std::vector<file_loc*> data;
+    trie_node* parent = nullptr;
+    trie_node(trie_node* parent) : parent(parent) {};
+} g_index(nullptr);
+
+void index_add(trie_node* index, const char *key, file_loc* data) {
+    for(int i = 0; i < strlen(key); ++i) {
+        assert(index);
+        const char c = key[i];
+        if (!index->next.count(c)) {
+			index->next[c] = new trie_node(index);
+        }
+        index = index->next[c];
+    }
+    index->data.push_back(data);
+};
+
+trie_node* index_lookup(trie_node* index, const char* key) {
+    for(int i = 0; i < strlen(key); ++i) {
+        assert(index);
+        const char c = key[i];
+        if (!index->next.count(c)) { return nullptr;  }
+        else { index = index->next[c]; }
+    }
+    return index;
+}
+
+
+// returns number of leaves added to out.
+int index_get_leaves(trie_node* index, std::vector<trie_node*>& out, int max_to_find) {
+    assert(max_to_find >= 0);
+    if (max_to_find == 0) { return 0; }
+    assert(max_to_find > 0);
+
+    if (index->data.size()) {
+        out.push_back(index);
+    }
+    max_to_find -= 1;
+    assert(max_to_find >= 0);
+    if (max_to_find == 0) { return 1;  }
+
+    int num_added = 0;
+    for (auto it : index->next) {
+        num_added += index_get_leaves(it.second, out, max_to_find - num_added);
+        assert(num_added <= max_to_find);
+        if (num_added == max_to_find) {
+            break;
+        }
+    }
+
+    return num_added;
+}
+
+
 const int TARGET_FRAMES_PER_SECOND = 30.0;
 const clock_t TARGET_CLOCKS_PER_FRAME = CLOCKS_PER_SEC / TARGET_FRAMES_PER_SECOND;
 
@@ -354,7 +424,6 @@ void mu_command_palette(mu_Context* ctx, CommandPaletteState* state) {
         }
 		/* handle key press. stolen from mu_textbox_raw */
 		state->input += std::string(ctx->input_text);
-        std::cout << "state->input: " << state->input << "\n";
 
 		mu_Font font = ctx->style->font;
 
@@ -362,10 +431,31 @@ void mu_command_palette(mu_Context* ctx, CommandPaletteState* state) {
         const int width[] = { 800 };
 		mu_layout_row(ctx, 1, width, ctx->text_height(font));
         mu_Rect r = mu_layout_next(ctx);
-        std::cout << "r.x: " << r.x << " | r.y: " << r.y << "\n";
 		// mu_draw_text(ctx, font, "Command Palette", strlen("Command Palette"), mu_vec2(r.x, r.y), ctx->style->colors[MU_COLOR_TEXT]);
 		// mu_draw_text(ctx, font, state->input.c_str(), state->input.size(), mu_vec2(0, 20), ctx->style->colors[MU_COLOR_TEXT]);
-		mu_draw_text(ctx, font, (state->input + "|").c_str(), state->input.size() + 1, mu_vec2(r.x, r.y), ctx->style->colors[MU_COLOR_TEXT]);
+        const mu_Color query_color = { .r = 187, .g = 222, .b = 251, .a = 255 };
+        mu_draw_text(ctx, font, (state->input + "|").c_str(), state->input.size() + 1, mu_vec2(r.x, r.y), query_color);
+
+        const mu_Color results_color = { .r = 157, .g = 110, .b = 53, .a = 255 };
+
+
+
+        trie_node* t = index_lookup(&g_index, state->input.c_str());
+
+        if (t != nullptr) {
+			std::vector<trie_node*> answers;
+			index_get_leaves(t, answers, 10);
+            int tot = 0;
+            for (int i = 0; i < answers.size() && tot < 10;++i) {
+                // mu_layout_row(ctx, 1, width, ctx->text_height(font));
+                for (int j = 0; j < answers[i]->data.size() && tot < 10; ++j, ++tot) {
+                    std::string text = answers[i]->data[j]->path;
+					mu_Rect r = mu_layout_next(ctx);
+                    mu_draw_text(ctx, font, text.c_str(), text.size(), mu_vec2(r.x, r.y), results_color);
+                }
+            }
+        }
+
         mu_layout_end_column(ctx);
 
         mu_end_window(ctx);
@@ -627,51 +717,7 @@ static int text_height(mu_Font font) {
     return r_get_text_height();
 }
 
-// https://15721.courses.cs.cmu.edu/spring2018/papers/09-oltpindexes2/leis-icde2013.pdf
-// Ukkonen
 
-using hash = long long;
-struct file_loc {
-    std::string path;
-    int line;
-    int col;
-};
-
-struct trie_node {
-    std::unordered_map<int, trie_node*> next;
-    file_loc* data = nullptr;
-};
-
-struct index {
-    trie_node* root;
-};
-
-trie_node *index_init() {
-    return new trie_node;
-}
-
-void index_add(trie_node* index, const char *key, file_loc* data) {
-    while (*key) {
-		index = index->next[*key];
-    }
-    index->data = data;
-};
-
-trie_node* index_lookup(trie_node* index, const char* key) {
-    while (*key) {
-        if (!index->next.count(*key)) { return nullptr;  }
-        else { index = index->next[*key]; }
-    }
-    return index;
-}
-
-void build_index_from_path(const std::filesystem::path p, trie_node* index) {
-    for (const std::filesystem::directory_entry& dir_entry : 
-            std::filesystem::recursive_directory_iterator(p)) {
-		std::cout << "root_path: " << dir_entry.path() << "\n";
-	}
-
-}
 
 enum class TaskStateKind {
     TSK_ERROR,
@@ -726,6 +772,8 @@ struct TaskIndexFile : public Task {
 
         std::string word;
         std::getline(file, word, ' ');
+        index_add(&g_index, word.c_str(), new file_loc(p.string(), 0, 0));
+        assert(index);
 
         // if (word.size()) {
         //     std::cout << p << ": |" << word << "|\n";
@@ -791,12 +839,13 @@ void process_tasks(std::stack<Task*>& tasks) {
 
 int main(int argc, char** argv) {
     setlocale(LC_ALL, "");
-    trie_node* g_index = new trie_node();
     std::stack<Task*> g_tasks;
     
     const std::filesystem::path root_path(argc == 1 ? "C:\\Users\\bollu\\phd\\lean4\\src\\" : argv[1]);
     std::cout << "root_path: " << root_path << "\n";
-    g_tasks.push(new TaskWalkDirectory(g_index, root_path));
+
+    g_index.parent = &g_index;
+    g_tasks.push(new TaskWalkDirectory(&g_index, root_path));
     g_bottom_line_state.info = "FOO BAR";
 
     SDL_Init(SDL_INIT_EVERYTHING);
