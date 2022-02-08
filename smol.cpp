@@ -505,8 +505,8 @@ void mu_command_palette(mu_Context* ctx, CommandPaletteState* state) {
         mu_Rect r = mu_layout_next(ctx);
 		// mu_draw_text(ctx, font, "Command Palette", strlen("Command Palette"), mu_vec2(r.x, r.y), ctx->style->colors[MU_COLOR_TEXT]);
 		// mu_draw_text(ctx, font, state->input.c_str(), state->input.size(), mu_vec2(0, 20), ctx->style->colors[MU_COLOR_TEXT]);
-        const mu_Color query_color = { .r = 187, .g = 222, .b = 251, .a = 255 };
-        mu_draw_text(ctx, font, (state->input + "|").c_str(), state->input.size() + 1, mu_vec2(r.x, r.y), query_color);
+        const mu_Color QUERY_COLOR = { .r = 187, .g = 222, .b = 251, .a = 255 };
+        mu_draw_text(ctx, font, (state->input + "|").c_str(), state->input.size() + 1, mu_vec2(r.x, r.y), QUERY_COLOR);
 
 
 
@@ -514,33 +514,56 @@ void mu_command_palette(mu_Context* ctx, CommandPaletteState* state) {
         trie_node* t = index_lookup(&g_index, state->input.c_str(), state->input.size());
 
         if (t != nullptr) {
-			const mu_Color results_color = { .r = 100, .g = 100, .b = 100, .a = 255 };
 			std::vector<trie_node*> answers;
-			index_get_leaves(t, answers, 10);
+            static const int NUM_ANSWERS = 80;
+			index_get_leaves(t, answers, NUM_ANSWERS);
             int tot = 0;
-            for (int i = 0; i < answers.size() && tot < 10;++i) {
+            for (int i = 0; i < answers.size() && tot < NUM_ANSWERS;++i) {
                 // mu_layout_row(ctx, 1, width, ctx->text_height(font));
-                for (int j = 0; j < answers[i]->data.size() && tot < 10; ++j, ++tot) {
+                for (int j = 0; j < answers[i]->data.size() && tot < NUM_ANSWERS; ++j, ++tot) {
                     const Loc l = answers[i]->data[j];
                     std::string out = l.file->path;
                     out += ":";
 
-                    int ix_end = l.ix;
-                    while (ix_end < l.file->len && !is_newline(l.file->buf[ix_end])) {
-                        ix_end++;
+                    int ix_line_end = l.ix;
+                    while (ix_line_end < l.file->len && !is_newline(l.file->buf[ix_line_end])) {
+                        ix_line_end++;
                     }
-                    int ix_begin = l.ix;
+                    int ix_line_begin = l.ix;
 
-                    while (ix_begin > 0 && !is_newline(l.file->buf[ix_begin])) {
-                        ix_begin--;
+                    while (ix_line_begin > 0 && !is_newline(l.file->buf[ix_line_begin])) {
+                        ix_line_begin--;
                     }
 
-                    for (int k = ix_begin; k < ix_end; ++k) {
+                    for (int k = ix_line_begin; k < ix_line_end; ++k) {
                         out += l.file->buf[k];
                     }
 
 					mu_Rect r = mu_layout_next(ctx);
-                    mu_draw_text(ctx, font, out.c_str(), out.size(), mu_vec2(r.x, r.y), results_color);
+					const mu_Color PATH_COLOR = { .r = 100, .g = 100, .b = 100, .a = 255 };
+                    mu_draw_text(ctx, font, l.file->path.c_str(), l.file->path.size(), mu_vec2(r.x, r.y), PATH_COLOR);
+                    r.x += r_get_text_width(l.file->path.c_str(), l.file->path.size());
+
+                    mu_draw_text(ctx, font, ":", 1, mu_vec2(r.x, r.y), PATH_COLOR);
+                    r.x += r_get_text_width(":", 1);
+
+
+					const mu_Color CODE_NO_HIGHLIGHT_COLOR = { .r = 180, .g = 180, .b = 180, .a = 255 };
+                    // [ix_line_begin, ix)
+                    mu_draw_text(ctx, font, l.file->buf + ix_line_begin, l.ix - ix_line_begin, mu_vec2(r.x, r.y), CODE_NO_HIGHLIGHT_COLOR);
+                    r.x += r_get_text_width(l.file->buf + ix_line_begin, l.ix - ix_line_begin);
+
+                    // [ix, ix_str_end)
+                    const int ix_str_end = l.ix + state->input.size();
+                    const mu_Color CODE_WITH_HIGHLIGHT_COLOR = QUERY_COLOR;
+                    mu_draw_text(ctx, font, l.file->buf + l.ix, ix_str_end - l.ix, mu_vec2(r.x, r.y), CODE_WITH_HIGHLIGHT_COLOR);
+                    r.x += r_get_text_width(l.file->buf + l.ix, ix_str_end - l.ix);
+
+
+                    // [ix+search str, ix end)
+                    mu_draw_text(ctx, font, l.file->buf + ix_str_end, ix_line_end - ix_str_end, mu_vec2(r.x, r.y), CODE_NO_HIGHLIGHT_COLOR);
+                    r.x += r_get_text_width(l.file->buf + ix_str_end, ix_line_end - ix_str_end);
+
                 }
             }
         }
