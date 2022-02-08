@@ -208,7 +208,7 @@ def serialize_atlas(ATLAS: Atlas) -> str:
             out += "  [MU_ICON_COLLAPSED] = { %s, %s, %s, %s },\n" % (r.x, r.y, r.w, r.h)
 
         # TODO: make an actual white color
-        if b.encoding == ord('|'):
+        if b.encoding == 256 || b.encoding == -1: # TODO: this is special for font Dina _i40010. Do something similar for all fonts.
             out += "  [ATLAS_WHITE] = { %s, %s, %s, %s },\n" % (r.x, r.y, r.w, r.h)
 
 
@@ -220,7 +220,7 @@ def filter_bitmaps(BITMAPS: List[Bitmap]) -> List[Bitmap]:
     """only keep bitmaps that are useful"""
     out = []
     for b in BITMAPS:
-        if b.encoding >= 32 and b.encoding <= 126:
+        if b.encoding >= 32 and b.encoding <= 256:
             out.append(b)
     return out
 
