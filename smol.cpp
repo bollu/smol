@@ -13,7 +13,13 @@
 #include <unordered_map>
 #include <optional>
 #include <filesystem>
+#include <fstream>
 #include <stack>
+#include <format>
+#include <time.h>
+
+const int TARGET_FRAMES_PER_SECOND = 60.0;
+const clock_t TARGET_CLOCKS_PER_FRAME = CLOCKS_PER_SEC / TARGET_FRAMES_PER_SECOND;
 
 static  char logbuf[64000];
 static   int logbuf_updated = 0;
@@ -627,43 +633,87 @@ enum class TaskStateKind {
 };
 
 // lol, do I use a stack because queueing theory tells me to?
-struct task {
+struct Task {
     // enqueue more tasks as necessary.
     // when a task is run, the task has been *popped off* the stack.
     // so the runner is:
     // t = tasks.top(); t->pop(); t->run(tasks);
     // return fals
-    virtual TaskStateKind run(std::stack<task*>& tasks) = 0;
-    virtual ~task() {};
+    virtual TaskStateKind run(std::stack<Task*>& tasks) = 0;
+    virtual ~Task() {};
 };
 
 
-struct task_index_directory : public task {
+struct TaskIndexFile : public Task {
     std::filesystem::path p;
-    int count = 0;
-    task_index_directory(std::filesystem::path p) : p(p) {}
+    std::ifstream file;
+    long long total_size = 1;
+    long long cur_size = 1;
+    TaskIndexFile(std::filesystem::path p) : p(p) {
+    }
 
-    TaskStateKind run(std::stack<task*>& tasks) {
-        count++;
-        g_bottom_line_state.info = "ix: " + p.string() + " | " + std::to_string(count);
-        if (count < 10) {
+    TaskStateKind run(std::stack<Task*>& tasks) {
+        if (!file) {
+            file.open(p.c_str(), std::ios::binary); 
+            assert(file.is_open() && "unable to open file");
+
+            file.seekg(0, std::ios_base::_Seekend);
+            total_size = file.tellg();
+            assert(total_size > 0);
+
+            cur_size = 0;
+            file.seekg(0, std::ios_base::_Seekbeg);
+
+            g_bottom_line_state.info = "ix: " + p.string() + " | 0%";
             tasks.push(this);
-            return TaskStateKind::TSK_CONTINUE;
+			return TaskStateKind::TSK_CONTINUE;
         }
-        return TaskStateKind::TSK_DONE;
+
+        if (file.eof()) {
+			g_bottom_line_state.info = "DONE indexing " + p.string();
+            return TaskStateKind::TSK_DONE;
+        }
+
+        assert(file);
+
+        std::string word;
+        std::getline(file, word, ' ');
+
+        // if (word.size()) {
+        //     std::cout << p << ": |" << word << "|\n";
+        // }
+
+        assert(file.gcount() >= 0);
+        this->cur_size += file.gcount();
+        assert(cur_size <= total_size);
+
+        const float percent = 100.0 * ((float)cur_size / total_size);
+        g_bottom_line_state.info = "ix: ";
+        g_bottom_line_state.info += p.string();
+        g_bottom_line_state.info += " | ";
+        g_bottom_line_state.info += word;
+
+        // std::cout << g_bottom_line_state.info << "\n";
+
+        // wprintf(L"%ls | %20s | %4.2f\n", p.c_str(), word.c_str(), percent);
+
+		tasks.push(this);
+		return TaskStateKind::TSK_CONTINUE;
     }
 };
 
-struct task_walk_directory : public task {
+struct TaskWalkDirectory : public Task {
     std::filesystem::recursive_directory_iterator it;
-    task_walk_directory(std::filesystem::path root) : it(root) { }
-	TaskStateKind run(std::stack<task*>& tasks) {
+    TaskWalkDirectory(std::filesystem::path root) : it(root) { }
+	TaskStateKind run(std::stack<Task*>& tasks) {
         if (it == std::filesystem::end(it)) {
             return TaskStateKind::TSK_DONE;
         } 
         std::filesystem::path curp = *it;
         g_bottom_line_state.info = "walking: " + curp.string();
-        tasks.push(new task_index_directory(curp));
+        if (std::filesystem::is_regular_file(curp)) {
+            tasks.push(new TaskIndexFile(curp));
+        }
         ++it;
 
         tasks.push(this);
@@ -671,13 +721,31 @@ struct task_walk_directory : public task {
     }
 };
 
+void process_tasks(std::stack<Task*>& tasks) {
+    const clock_t clock_begin = clock();
+
+    do {
+        if (!tasks.size()) {
+            return;
+        }
+        Task* t = tasks.top(); tasks.pop();
+        TaskStateKind k = t->run(tasks);
+        if (k == TaskStateKind::TSK_DONE) {
+            delete t;
+        } else if (k == TaskStateKind::TSK_ERROR) {
+            assert(false && "error when task was run.");
+        }
+    } while (clock() - clock_begin < TARGET_CLOCKS_PER_FRAME * 0.5);
+}
+
 int main(int argc, char** argv) {
+    setlocale(LC_ALL, "");
     trie_node* g_index = new trie_node();
-    std::stack<task*> g_tasks;
+    std::stack<Task*> g_tasks;
     
     const std::filesystem::path root_path(argc == 1 ? "C:\\Users\\bollu\\phd\\lean4\\src\\" : argv[1]);
     std::cout << "root_path: " << root_path << "\n";
-    g_tasks.push(new task_walk_directory(root_path));
+    g_tasks.push(new TaskWalkDirectory(root_path));
     g_bottom_line_state.info = "FOO BAR";
 
     SDL_Init(SDL_INIT_EVERYTHING);
@@ -725,20 +793,7 @@ int main(int argc, char** argv) {
         }
         
         // Handle tasks.
-        if (g_tasks.size()) {
-            task* t = g_tasks.top(); g_tasks.pop();
-            TaskStateKind k = t->run(g_tasks);
-            switch (k) {
-            case TaskStateKind::TSK_CONTINUE: break;
-            case TaskStateKind::TSK_DONE: {
-                free(t); break;
-            }
-            case TaskStateKind::TSK_ERROR: {
-                assert(false && "error when task was run.");
-                break;
-			}
-			} // end switch
-        }
+        process_tasks(g_tasks);
 
         /* process frame */
         process_frame(ctx);
