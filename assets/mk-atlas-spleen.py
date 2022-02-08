@@ -208,7 +208,7 @@ def serialize_atlas(ATLAS: Atlas) -> str:
             out += "  [MU_ICON_COLLAPSED] = { %s, %s, %s, %s },\n" % (r.x, r.y, r.w, r.h)
 
         # TODO: make an actual white color
-        if b.encoding == 256 || b.encoding == -1: # TODO: this is special for font Dina _i40010. Do something similar for all fonts.
+        if b.name == "ALLWHITE": # TODO: this is special for font Dina _i40010. Do something similar for all fonts.
             out += "  [ATLAS_WHITE] = { %s, %s, %s, %s },\n" % (r.x, r.y, r.w, r.h)
 
 
@@ -224,11 +224,31 @@ def filter_bitmaps(BITMAPS: List[Bitmap]) -> List[Bitmap]:
             out.append(b)
     return out
 
+
+def make_all_white_bitmap(w, h):
+    name = "ALLWHITE"
+    encoding = -1
+    assert w % 8 == 0
+    return Bitmap(name, encoding, w, h, [[255]*(w//8)]*h)
+
+
 if __name__ == "__main__":
+    # BITMAP_WIDTH = 8
+    # ATLAS_WIDTH = BITMAP_WIDTH
+    # BITMAP_HEIGHT = 16
+    # PATH = argparse("Dina_i400-10.bdf")
+
+    # BITMAP_WIDTH = 8
+    # ATLAS_WIDTH = BITMAP_WIDTH
+    # BITMAP_HEIGHT = 16
+    # PATH = argparse("spleen-8x16.bdf")
+
     BITMAP_WIDTH = 8
     ATLAS_WIDTH = BITMAP_WIDTH
     BITMAP_HEIGHT = 16
-    PATH = argparse("Dina_i400-10.bdf")
+    PATH = argparse("Dina_r700-10.bdf")
+
+
     assert PATH
     with open(PATH) as f:
         BITMAPS = fileparse(f)
@@ -236,6 +256,7 @@ if __name__ == "__main__":
         assert b.width == BITMAP_WIDTH, f"{b.name} has unexpected width {b.width}; expected {BITMAP_WIDTH}"
         assert b.height == BITMAP_HEIGHT, f"{b.name} has unexpected height {b.height}; expected {BITMAP_HEIGHT}"
     BITMAPS = filter_bitmaps(BITMAPS)
+    BITMAPS.append(make_all_white_bitmap(BITMAP_WIDTH, BITMAP_HEIGHT))
     ATLAS = make_atlas(BITMAPS, ATLAS_WIDTH, BITMAP_WIDTH, BITMAP_HEIGHT)
     OUT = serialize_atlas(ATLAS)
     # with open("../microui/atlas.inl", "w") as f:

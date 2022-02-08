@@ -22,25 +22,97 @@
 // https://15721.courses.cs.cmu.edu/spring2018/papers/09-oltpindexes2/leis-icde2013.pdf
 // Ukkonen
 
-using hash = long long;
-struct file_loc {
-    std::string path;
-    int line;
-    int col;
 
+struct File {
+    std::string path;
+    char* buf;
+    int len;
+
+    File(std::string path, int len) : path(path), len(len) {};
+
+};
+
+using hash = long long;
+
+
+bool is_newline(char c) {
+    return c == '\r' || c == '\n';
+}
+
+bool is_whitespace(char c) {
+    return c == ' ' || c == '\n' || c == '\t' || c == '\r';
+
+}
+
+struct Loc {
+    File* file = nullptr;
+    int ix = -1; 
+    int line = -1;
+    int col = -1;
+
+    Loc() {}
     // TODO: don't store the string.
-    file_loc(std::string path, int line, int col) : path(path), line(line), col(col) {};
+    Loc(File *file, int ix, int line, int col) : file(file), ix(ix), line(line), col(col) {};
+
+    bool valid() const {
+        assert(file != nullptr);
+        assert(ix >= 0);
+        assert(line >= 1);
+        assert(col >= 1);
+        assert(ix <= file->len);
+        return true;
+    }
+
+    bool eof() const {
+        assert(valid());
+        return ix == file->len;
+    }
+
+    char get() const {
+        assert(!eof());
+        return file->buf[this->ix];
+    }
+
+    /*
+    // this is more complicated.
+    Loc retreat() const {
+        assert(valid());
+        assert(ix > 0); // must not be at beginning.
+        char c = file->buf[this->ix - 1];
+        if (c == '\n') {
+            assert(ix - 1 > 0);
+            assert(file->buf[this->ix - 2] == '\r');
+
+        }
+
+    }
+    */
+
+    Loc advance() const {
+        assert(!eof());
+        if (file->buf[this->ix] == '\r') {
+            assert(ix + 1 < file->len);
+            assert(file->buf[this->ix + 1] == '\n');
+            return Loc(file, ix + 2, line + 1, 1);
+        }
+        else if (file->buf[this->ix] == '\n') {
+            return Loc(file, ix + 1, line + 1, 1);
+        }
+        else {
+            return Loc(file, ix + 1, line, col + 1);
+        }
+    }
 };
 
 struct trie_node {
     std::unordered_map<int, trie_node*> next;
-    std::vector<file_loc*> data;
+    std::vector<Loc> data;
     trie_node* parent = nullptr;
     trie_node(trie_node* parent) : parent(parent) {};
 } g_index(nullptr);
 
-void index_add(trie_node* index, const char *key, file_loc* data) {
-    for(int i = 0; i < strlen(key); ++i) {
+void index_add(trie_node* index, const char *key, int len, Loc data) {
+    for(int i = 0; i < len; ++i) {
         assert(index);
         const char c = key[i];
         if (!index->next.count(c)) {
@@ -51,8 +123,8 @@ void index_add(trie_node* index, const char *key, file_loc* data) {
     index->data.push_back(data);
 };
 
-trie_node* index_lookup(trie_node* index, const char* key) {
-    for(int i = 0; i < strlen(key); ++i) {
+trie_node* index_lookup(trie_node* index, const char* key, int len) {
+    for(int i = 0; i < len; ++i) {
         assert(index);
         const char c = key[i];
         if (!index->next.count(c)) { return nullptr;  }
@@ -401,7 +473,7 @@ void mu_draw_cursor(mu_Context* ctx, mu_Rect* r) {
 
 void mu_command_palette(mu_Context* ctx, CommandPaletteState* state) {
     if (!state->open) { return; }
-    if (mu_begin_window(ctx, "CMD", mu_Rect(100, 100, 800, 400))) {
+    if (mu_begin_window(ctx, "CMD", mu_Rect(50, 50, 1100, 700))) {
 
 
 		// assert(false && "open palette");
@@ -436,22 +508,39 @@ void mu_command_palette(mu_Context* ctx, CommandPaletteState* state) {
         const mu_Color query_color = { .r = 187, .g = 222, .b = 251, .a = 255 };
         mu_draw_text(ctx, font, (state->input + "|").c_str(), state->input.size() + 1, mu_vec2(r.x, r.y), query_color);
 
-        const mu_Color results_color = { .r = 157, .g = 110, .b = 53, .a = 255 };
 
 
-
-        trie_node* t = index_lookup(&g_index, state->input.c_str());
+        // TODO: make this C
+        trie_node* t = index_lookup(&g_index, state->input.c_str(), state->input.size());
 
         if (t != nullptr) {
+			const mu_Color results_color = { .r = 100, .g = 100, .b = 100, .a = 255 };
 			std::vector<trie_node*> answers;
 			index_get_leaves(t, answers, 10);
             int tot = 0;
             for (int i = 0; i < answers.size() && tot < 10;++i) {
                 // mu_layout_row(ctx, 1, width, ctx->text_height(font));
                 for (int j = 0; j < answers[i]->data.size() && tot < 10; ++j, ++tot) {
-                    std::string text = answers[i]->data[j]->path;
+                    const Loc l = answers[i]->data[j];
+                    std::string out = l.file->path;
+                    out += ":";
+
+                    int ix_end = l.ix;
+                    while (ix_end < l.file->len && !is_newline(l.file->buf[ix_end])) {
+                        ix_end++;
+                    }
+                    int ix_begin = l.ix;
+
+                    while (ix_begin > 0 && !is_newline(l.file->buf[ix_begin])) {
+                        ix_begin--;
+                    }
+
+                    for (int k = ix_begin; k < ix_end; ++k) {
+                        out += l.file->buf[k];
+                    }
+
 					mu_Rect r = mu_layout_next(ctx);
-                    mu_draw_text(ctx, font, text.c_str(), text.size(), mu_vec2(r.x, r.y), results_color);
+                    mu_draw_text(ctx, font, out.c_str(), out.size(), mu_vec2(r.x, r.y), results_color);
                 }
             }
         }
@@ -737,63 +826,71 @@ struct Task {
 };
 
 
+
 struct TaskIndexFile : public Task {
     std::filesystem::path p;
-    std::ifstream file;
     trie_node* index;
-    long long total_size = 1;
-    long long cur_size = 1;
-	TaskIndexFile(trie_node* index, std::filesystem::path p) : index(index), p(p) {
-    }
+    Loc loc;
+	TaskIndexFile(trie_node* index, std::filesystem::path p) : index(index), p(p) {}
 
     TaskStateKind run(std::stack<Task*>& tasks) {
-        if (!file) {
-            file.open(p.c_str(), std::ios::binary); 
-            assert(file.is_open() && "unable to open file");
+        if (!loc.file) {
+            FILE *fp = _wfopen(p.c_str(), L"rb");
+            assert(fp && "unable to open file");
 
-            file.seekg(0, std::ios_base::_Seekend);
-            total_size = file.tellg();
-            assert(total_size > 0);
+            fseek(fp, 0, SEEK_END);
+            const int total_size = ftell(fp);
 
-            cur_size = 0;
-            file.seekg(0, std::ios_base::_Seekbeg);
+            loc.file = new File(p.string(), total_size);
+            loc.ix = 0;
+            loc.line = 1;
+            loc.col = 1;
+
+            fseek(fp, 0, SEEK_SET);
+            loc.file->buf = new char[total_size];
+            const int nread = fread(loc.file->buf, 1, total_size, fp);
+            fclose(fp);
+            assert(nread == total_size && "unable to read file");
 
             g_bottom_line_state.info = "ix: " + p.string() + " | 0%";
             tasks.push(this);
 			return TaskStateKind::TSK_CONTINUE;
         }
 
-        if (file.eof()) {
+        assert(loc.valid());
+        while (loc.ix < loc.file->len && is_whitespace(loc.get())) { 
+            loc = loc.advance();
+        }
+
+        assert(loc.valid());
+        if (loc.eof()) {
 			g_bottom_line_state.info = "DONE indexing " + p.string();
             return TaskStateKind::TSK_DONE;
         }
 
-        assert(file);
+        assert(!is_whitespace(loc.get()));
 
-        std::string word;
-        std::getline(file, word, ' ');
-        index_add(&g_index, word.c_str(), new file_loc(p.string(), 0, 0));
-        assert(index);
+        Loc nextloc = loc;
+        while (!nextloc.eof() && !is_whitespace(nextloc.get())) {
+			nextloc = nextloc.advance();
+        }
 
-        // if (word.size()) {
-        //     std::cout << p << ": |" << word << "|\n";
-        // }
+        // nextloc will be at whitespace. so we have [loc, nextloc)
+        // half open.
 
-        assert(file.gcount() >= 0);
-        this->cur_size += file.gcount();
-        assert(cur_size <= total_size);
+        index_add(&g_index,
+            loc.file->buf + loc.ix,
+            nextloc.ix  - loc.ix, loc);
 
-        const float percent = 100.0 * ((float)cur_size / total_size);
+        const float percent = 100.0 * ((float)loc.ix / loc.file->len);
         g_bottom_line_state.info = "ix: ";
         g_bottom_line_state.info += p.string();
         g_bottom_line_state.info += " | ";
-        g_bottom_line_state.info += word;
+        for (int i = loc.ix; i < nextloc.ix; ++i) {
+            g_bottom_line_state.info += loc.file->buf[i];
+        }
 
-
-        // std::cout << g_bottom_line_state.info << "\n";
-
-        // wprintf(L"%ls | %20s | %4.2f\n", p.c_str(), word.c_str(), percent);
-
+        loc = nextloc;
 		tasks.push(this);
 		return TaskStateKind::TSK_CONTINUE;
     }
