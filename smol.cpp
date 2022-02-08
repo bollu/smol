@@ -73,21 +73,6 @@ struct Loc {
         return file->buf[this->ix];
     }
 
-    /*
-    // this is more complicated.
-    Loc retreat() const {
-        assert(valid());
-        assert(ix > 0); // must not be at beginning.
-        char c = file->buf[this->ix - 1];
-        if (c == '\n') {
-            assert(ix - 1 > 0);
-            assert(file->buf[this->ix - 2] == '\r');
-
-        }
-
-    }
-    */
-
     Loc advance() const {
         assert(!eof());
         if (file->buf[this->ix] == '\r') {
@@ -334,6 +319,8 @@ struct BottomlineState {
 struct CommandPaletteState {
     bool open = true;
     std::string input;
+    std::vector<trie_node*> matches;
+    int sequence_number = 0;
 } g_command_palette_state;
 
 mu_Id editor_state_mu_id(mu_Context *ctx, EditorState* ed) {
@@ -480,6 +467,7 @@ void mu_command_palette(mu_Context* ctx, CommandPaletteState* state) {
         mu_set_focus(ctx, ctx->last_id);
 
         if (ctx->key_pressed & MU_KEY_BACKSPACE) {
+			state->sequence_number++;
             state->input.resize(std::max<int>(0, state->input.size() - 1));
         }
 
@@ -494,8 +482,12 @@ void mu_command_palette(mu_Context* ctx, CommandPaletteState* state) {
             g_command_palette_state.open = false;
             g_command_palette_state.input = "";
         }
-		/* handle key press. stolen from mu_textbox_raw */
-		state->input += std::string(ctx->input_text);
+
+        if (strlen(ctx->input_text)) {
+			/* handle key press. stolen from mu_textbox_raw */
+            state->sequence_number++;
+			state->input += std::string(ctx->input_text);
+        }
 
 		mu_Font font = ctx->style->font;
 
@@ -637,7 +629,7 @@ void mu_editor(mu_Context* ctx, EditorState *ed) {
     mu_layout_begin_column(ctx);
     mu_layout_row(ctx, 1, &width, ctx->text_height(font));
 	// mu_draw_control_frame(ctx, id, cnt->body, MU_COLOR_BASE, 0);
-    const int MAX_LINES = 20;
+    const int MAX_LINES = 100;
     for (int l = 0; l < MAX_LINES; ++l) {
         mu_Rect r = mu_layout_next(ctx);
 
@@ -890,30 +882,32 @@ struct TaskIndexFile : public Task {
 			g_bottom_line_state.info = "DONE indexing " + p.string();
             return TaskStateKind::TSK_DONE;
         }
-
         assert(!is_whitespace(loc.get()));
 
-        Loc nextloc = loc;
-        while (!nextloc.eof() && !is_whitespace(nextloc.get())) {
-			nextloc = nextloc.advance();
+        Loc eol = loc;
+        static const int MAX_SUFFIX_LEN = 100;
+        while (!eol.eof() && !is_newline(eol.get()) && (eol.ix - loc.ix) <= MAX_SUFFIX_LEN) {
+            eol = eol.advance();
         }
 
-        // nextloc will be at whitespace. so we have [loc, nextloc)
-        // half open.
-
-        index_add(&g_index,
-            loc.file->buf + loc.ix,
-            nextloc.ix  - loc.ix, loc);
+        for (Loc sufloc = loc; sufloc.ix < eol.ix; sufloc = sufloc.advance()) {
+            index_add(&g_index,
+                loc.file->buf + sufloc.ix,
+                eol.ix - sufloc.ix, sufloc);
+			assert(!sufloc.eof());
+        }
 
         const float percent = 100.0 * ((float)loc.ix / loc.file->len);
         g_bottom_line_state.info = "ix: ";
         g_bottom_line_state.info += p.string();
         g_bottom_line_state.info += " | ";
-        for (int i = loc.ix; i < nextloc.ix; ++i) {
+        g_bottom_line_state.info += std::to_string(percent);
+        g_bottom_line_state.info += " | ";
+        for (int i = loc.ix; i < eol.ix; ++i) {
             g_bottom_line_state.info += loc.file->buf[i];
         }
 
-        loc = nextloc;
+        loc = eol;
 		tasks.push(this);
 		return TaskStateKind::TSK_CONTINUE;
     }
@@ -937,6 +931,22 @@ struct TaskWalkDirectory : public Task {
 
         tasks.push(this);
         return TaskStateKind::TSK_CONTINUE;
+    }
+};
+
+struct TaskCommandPaletteMatch : public Task {
+	// used by the task to check if it is stale.
+    int sequence_number; 
+    CommandPaletteState* state;
+    std::stack<trie_node*> dfs;
+    TaskCommandPaletteMatch(int sequence_number, CommandPaletteState *state) : sequence_number(sequence_number), state(state) {
+        dfs.push(&g_index);
+    }
+    TaskStateKind run(std::stack<Task*> &tasks) {
+        if (sequence_number != state->sequence_number) {
+            return TaskStateKind::TSK_DONE;
+        }
+
     }
 };
 
