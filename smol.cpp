@@ -1,6 +1,8 @@
 ﻿#include <SDL.h>
 #define main main
-#include <stdio.h>
+#include <unordered_map>
+#include <map>
+#include <iostream>
 #include "renderer.h"
 #include "microui/microui-header.h"
 #include "string.h"
@@ -8,6 +10,10 @@
 #include <string>
 #include <vector>
 #include <cassert>
+#include <unordered_map>
+#include <optional>
+#include <filesystem>
+#include <stack>
 
 static  char logbuf[64000];
 static   int logbuf_updated = 0;
@@ -173,6 +179,10 @@ struct EditorState {
     
 } g_editor_state;
 
+struct BottomlineState {
+    std::string info;
+} g_bottom_line_state;
+
 struct CommandPaletteState {
     int selected;
 } g_command_palette_state;
@@ -316,6 +326,14 @@ void mu_command_palette(mu_Context* ctx, CommandPaletteState* pal) {
 
 }
 
+void mu_bottom_line(mu_Context* ctx, BottomlineState* s) {
+    mu_Font font = ctx->style->font;
+    mu_Rect parent_body = mu_get_current_container(ctx)->body;
+    int y = parent_body.y + parent_body.h - r_get_text_height();
+    mu_draw_text(ctx, font, s->info.c_str(), s->info.size(), mu_vec2(0, y), ctx->style->colors[MU_COLOR_TEXT]);
+}
+
+
 
 void mu_editor(mu_Context* ctx, EditorState *ed) {
     int width = -1;
@@ -429,6 +447,8 @@ static void editor_window(mu_Context* ctx) {
         // TODO: find less jank approach to make this focused at start time.
         mu_set_focus(ctx, editor_state_mu_id(ctx, &g_editor_state));
         mu_end_panel(ctx);
+
+		mu_bottom_line(ctx, &g_bottom_line_state);
         //if (logbuf_updated) {
         //    panel->scroll.y = panel->content_size.y;
         //    logbuf_updated = 0;
@@ -554,9 +574,112 @@ static int text_height(mu_Font font) {
     return r_get_text_height();
 }
 
+// https://15721.courses.cs.cmu.edu/spring2018/papers/09-oltpindexes2/leis-icde2013.pdf
+// Ukkonen
+
+using hash = long long;
+struct file_loc {
+    std::string path;
+    int line;
+    int col;
+};
+
+struct trie_node {
+    std::unordered_map<int, trie_node*> next;
+    file_loc* data = nullptr;
+};
+
+struct index {
+    trie_node* root;
+};
+
+trie_node *index_init() {
+    return new trie_node;
+}
+
+void index_add(trie_node* index, const char *key, file_loc* data) {
+    while (*key) {
+		index = index->next[*key];
+    }
+    index->data = data;
+};
+
+trie_node* index_lookup(trie_node* index, const char* key) {
+    while (*key) {
+        if (!index->next.count(*key)) { return nullptr;  }
+        else { index = index->next[*key]; }
+    }
+    return index;
+}
+
+void build_index_from_path(const std::filesystem::path p, trie_node* index) {
+    for (const std::filesystem::directory_entry& dir_entry : 
+            std::filesystem::recursive_directory_iterator(p)) {
+		std::cout << "root_path: " << dir_entry.path() << "\n";
+	}
+
+}
+
+enum class TaskStateKind {
+    TSK_ERROR,
+    TSK_CONTINUE, // This objct continues to live on the stack.
+    TSK_DONE // This object can be freed.
+};
+
+// lol, do I use a stack because queueing theory tells me to?
+struct task {
+    // enqueue more tasks as necessary.
+    // when a task is run, the task has been *popped off* the stack.
+    // so the runner is:
+    // t = tasks.top(); t->pop(); t->run(tasks);
+    // return fals
+    virtual TaskStateKind run(std::stack<task*>& tasks) = 0;
+    virtual ~task() {};
+};
+
+
+struct task_index_directory : public task {
+    std::filesystem::path p;
+    int count = 0;
+    task_index_directory(std::filesystem::path p) : p(p) {}
+
+    TaskStateKind run(std::stack<task*>& tasks) {
+        count++;
+        g_bottom_line_state.info = "ix: " + p.string() + " | " + std::to_string(count);
+        if (count < 10) {
+            tasks.push(this);
+            return TaskStateKind::TSK_CONTINUE;
+        }
+        return TaskStateKind::TSK_DONE;
+    }
+};
+
+struct task_walk_directory : public task {
+    std::filesystem::recursive_directory_iterator it;
+    task_walk_directory(std::filesystem::path root) : it(root) { }
+	TaskStateKind run(std::stack<task*>& tasks) {
+        if (it == std::filesystem::end(it)) {
+            return TaskStateKind::TSK_DONE;
+        } 
+        std::filesystem::path curp = *it;
+        g_bottom_line_state.info = "walking: " + curp.string();
+        tasks.push(new task_index_directory(curp));
+        ++it;
+
+        tasks.push(this);
+        return TaskStateKind::TSK_CONTINUE;
+    }
+};
 
 int main(int argc, char** argv) {
-    /* init SDL and renderer */
+    trie_node* g_index = new trie_node();
+    std::stack<task*> g_tasks;
+    
+    const std::filesystem::path root_path(argc == 1 ? "C:\\Users\\bollu\\phd\\lean4\\src\\" : argv[1]);
+    std::cout << "root_path: " << root_path << "\n";
+    g_tasks.push(new task_walk_directory(root_path));
+    g_bottom_line_state.info = "FOO BAR";
+
     SDL_Init(SDL_INIT_EVERYTHING);
     r_init();
 
@@ -599,6 +722,22 @@ int main(int argc, char** argv) {
                 break;
             }
             }
+        }
+        
+        // Handle tasks.
+        if (g_tasks.size()) {
+            task* t = g_tasks.top(); g_tasks.pop();
+            TaskStateKind k = t->run(g_tasks);
+            switch (k) {
+            case TaskStateKind::TSK_CONTINUE: break;
+            case TaskStateKind::TSK_DONE: {
+                free(t); break;
+            }
+            case TaskStateKind::TSK_ERROR: {
+                assert(false && "error when task was run.");
+                break;
+			}
+			} // end switch
         }
 
         /* process frame */
