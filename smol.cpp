@@ -18,6 +18,8 @@
 #include <format>
 #include <time.h>
 
+const int TARGET_FRAMES_PER_SECOND = 15.0;
+const clock_t TARGET_CLOCKS_PER_FRAME = CLOCKS_PER_SEC / TARGET_FRAMES_PER_SECOND;
 
 // https://15721.courses.cs.cmu.edu/spring2018/papers/09-oltpindexes2/leis-icde2013.pdf
 // Ukkonen
@@ -145,8 +147,6 @@ int index_get_leaves(trie_node* index, std::vector<trie_node*>& out, int max_to_
 }
 
 
-const int TARGET_FRAMES_PER_SECOND = 30.0;
-const clock_t TARGET_CLOCKS_PER_FRAME = CLOCKS_PER_SEC / TARGET_FRAMES_PER_SECOND;
 
 static  char logbuf[64000];
 static   int logbuf_updated = 0;
@@ -267,7 +267,7 @@ static void test_window(mu_Context* ctx) {
 
 
 static void log_window(mu_Context* ctx) {
-    if (mu_begin_window(ctx, "Log Window", mu_rect(350, 40, 300, 200))) {
+    if (mu_begin_window(ctx, "Log Window", mu_rect(0, 720/2, 0, 720/2))) {
         /* output text panel */
         int width_row[] = { -1 };
         mu_layout_row(ctx, 1, width_row, -25);
@@ -309,19 +309,19 @@ struct Cursor{
 struct EditorState {
     std::vector<std::string> contents;
     Cursor loc;
-    
-} g_editor_state;
+
+};
 
 struct BottomlineState {
     std::string info;
-} g_bottom_line_state;
+};
 
 struct CommandPaletteState {
     bool open = true;
     std::string input;
     std::vector<trie_node*> matches;
     int sequence_number = 0;
-} g_command_palette_state;
+};
 
 mu_Id editor_state_mu_id(mu_Context *ctx, EditorState* ed) {
  return mu_get_id(ctx, &ed, sizeof(ed));
@@ -460,112 +460,110 @@ void mu_draw_cursor(mu_Context* ctx, mu_Rect* r) {
 
 void mu_command_palette(mu_Context* ctx, CommandPaletteState* state) {
     if (!state->open) { return; }
-    if (mu_begin_window(ctx, "CMD", mu_Rect(50, 50, 1100, 700))) {
+    if (mu_begin_window(ctx, "CMD", mu_Rect(0, 0, 1400, 720/2))) {
 
 
-		// assert(false && "open palette");
+        // assert(false && "open palette");
         mu_set_focus(ctx, ctx->last_id);
 
         if (ctx->key_pressed & MU_KEY_BACKSPACE) {
-			state->sequence_number++;
+            state->sequence_number++;
             state->input.resize(std::max<int>(0, state->input.size() - 1));
         }
 
-		// if (ctx->key_pressed & MU_KEY_COMMAND_PALETTE) {
+        // if (ctx->key_pressed & MU_KEY_COMMAND_PALETTE) {
         //     // TODO: need to debounce.
         //     g_command_palette_state.open = false;
         //     g_command_palette_state.input = "";
         // }
-        
-		if (ctx->key_pressed & MU_KEY_RETURN) {
+
+        if (ctx->key_pressed & MU_KEY_RETURN) {
             // TODO: need to debounce.
-            g_command_palette_state.open = false;
-            g_command_palette_state.input = "";
+            state->open = false;
+            state->input = "";
         }
 
         if (strlen(ctx->input_text)) {
-			/* handle key press. stolen from mu_textbox_raw */
+            /* handle key press. stolen from mu_textbox_raw */
             state->sequence_number++;
-			state->input += std::string(ctx->input_text);
+            state->input += std::string(ctx->input_text);
         }
 
-		mu_Font font = ctx->style->font;
+        mu_Font font = ctx->style->font;
 
-		mu_layout_begin_column(ctx);
+        mu_layout_begin_column(ctx);
         const int width[] = { 800 };
-		mu_layout_row(ctx, 1, width, ctx->text_height(font));
+        mu_layout_row(ctx, 1, width, ctx->text_height(font));
         mu_Rect r = mu_layout_next(ctx);
-		// mu_draw_text(ctx, font, "Command Palette", strlen("Command Palette"), mu_vec2(r.x, r.y), ctx->style->colors[MU_COLOR_TEXT]);
-		// mu_draw_text(ctx, font, state->input.c_str(), state->input.size(), mu_vec2(0, 20), ctx->style->colors[MU_COLOR_TEXT]);
+        // mu_draw_text(ctx, font, "Command Palette", strlen("Command Palette"), mu_vec2(r.x, r.y), ctx->style->colors[MU_COLOR_TEXT]);
+        // mu_draw_text(ctx, font, state->input.c_str(), state->input.size(), mu_vec2(0, 20), ctx->style->colors[MU_COLOR_TEXT]);
         const mu_Color QUERY_COLOR = { .r = 187, .g = 222, .b = 251, .a = 255 };
         mu_draw_text(ctx, font, (state->input + "|").c_str(), state->input.size() + 1, mu_vec2(r.x, r.y), QUERY_COLOR);
 
 
 
         // TODO: make this C
-        trie_node* t = index_lookup(&g_index, state->input.c_str(), state->input.size());
+        if (false) {
+            trie_node* t = index_lookup(&g_index, state->input.c_str(), state->input.size());
 
-        if (t != nullptr) {
-			std::vector<trie_node*> answers;
-            static const int NUM_ANSWERS = 80;
-			index_get_leaves(t, answers, NUM_ANSWERS);
-            int tot = 0;
-            for (int i = 0; i < answers.size() && tot < NUM_ANSWERS;++i) {
-                // mu_layout_row(ctx, 1, width, ctx->text_height(font));
-                for (int j = 0; j < answers[i]->data.size() && tot < NUM_ANSWERS; ++j, ++tot) {
-                    const Loc l = answers[i]->data[j];
-                    std::string out = l.file->path;
-                    out += ":";
+            if (t != nullptr) {
+                std::vector<trie_node*> answers;
+                static const int NUM_ANSWERS = 80;
+                index_get_leaves(t, answers, NUM_ANSWERS);
+                int tot = 0;
+                for (int i = 0; i < answers.size() && tot < NUM_ANSWERS; ++i) {
+                    // mu_layout_row(ctx, 1, width, ctx->text_height(font));
+                    for (int j = 0; j < answers[i]->data.size() && tot < NUM_ANSWERS; ++j, ++tot) {
+                        const Loc l = answers[i]->data[j];
+                        std::string out = l.file->path;
+                        out += ":";
 
-                    int ix_line_end = l.ix;
-                    while (ix_line_end < l.file->len && !is_newline(l.file->buf[ix_line_end])) {
-                        ix_line_end++;
-                    }
-                    int ix_line_begin = l.ix;
+                        int ix_line_end = l.ix;
+                        while (ix_line_end < l.file->len && !is_newline(l.file->buf[ix_line_end])) {
+                            ix_line_end++;
+                        }
+                        int ix_line_begin = l.ix;
 
-                    while (ix_line_begin > 0 && !is_newline(l.file->buf[ix_line_begin])) {
-                        ix_line_begin--;
-                    }
+                        while (ix_line_begin > 0 && !is_newline(l.file->buf[ix_line_begin])) {
+                            ix_line_begin--;
+                        }
 
-                    for (int k = ix_line_begin; k < ix_line_end; ++k) {
-                        out += l.file->buf[k];
-                    }
+                        for (int k = ix_line_begin; k < ix_line_end; ++k) {
+                            out += l.file->buf[k];
+                        }
 
-					mu_Rect r = mu_layout_next(ctx);
-					const mu_Color PATH_COLOR = { .r = 100, .g = 100, .b = 100, .a = 255 };
-                    mu_draw_text(ctx, font, l.file->path.c_str(), l.file->path.size(), mu_vec2(r.x, r.y), PATH_COLOR);
-                    r.x += r_get_text_width(l.file->path.c_str(), l.file->path.size());
+                        mu_Rect r = mu_layout_next(ctx);
+                        const mu_Color PATH_COLOR = { .r = 100, .g = 100, .b = 100, .a = 255 };
+                        mu_draw_text(ctx, font, l.file->path.c_str(), l.file->path.size(), mu_vec2(r.x, r.y), PATH_COLOR);
+                        r.x += r_get_text_width(l.file->path.c_str(), l.file->path.size());
 
-                    mu_draw_text(ctx, font, ":", 1, mu_vec2(r.x, r.y), PATH_COLOR);
-                    r.x += r_get_text_width(":", 1);
-
-
-					const mu_Color CODE_NO_HIGHLIGHT_COLOR = { .r = 180, .g = 180, .b = 180, .a = 255 };
-                    // [ix_line_begin, ix)
-                    mu_draw_text(ctx, font, l.file->buf + ix_line_begin, l.ix - ix_line_begin, mu_vec2(r.x, r.y), CODE_NO_HIGHLIGHT_COLOR);
-                    r.x += r_get_text_width(l.file->buf + ix_line_begin, l.ix - ix_line_begin);
-
-                    // [ix, ix_str_end)
-                    const int ix_str_end = l.ix + state->input.size();
-                    const mu_Color CODE_WITH_HIGHLIGHT_COLOR = QUERY_COLOR;
-                    mu_draw_text(ctx, font, l.file->buf + l.ix, ix_str_end - l.ix, mu_vec2(r.x, r.y), CODE_WITH_HIGHLIGHT_COLOR);
-                    r.x += r_get_text_width(l.file->buf + l.ix, ix_str_end - l.ix);
+                        mu_draw_text(ctx, font, ":", 1, mu_vec2(r.x, r.y), PATH_COLOR);
+                        r.x += r_get_text_width(":", 1);
 
 
-                    // [ix+search str, ix end)
-                    mu_draw_text(ctx, font, l.file->buf + ix_str_end, ix_line_end - ix_str_end, mu_vec2(r.x, r.y), CODE_NO_HIGHLIGHT_COLOR);
-                    r.x += r_get_text_width(l.file->buf + ix_str_end, ix_line_end - ix_str_end);
+                        const mu_Color CODE_NO_HIGHLIGHT_COLOR = { .r = 180, .g = 180, .b = 180, .a = 255 };
+                        // [ix_line_begin, ix)
+                        mu_draw_text(ctx, font, l.file->buf + ix_line_begin, l.ix - ix_line_begin, mu_vec2(r.x, r.y), CODE_NO_HIGHLIGHT_COLOR);
+                        r.x += r_get_text_width(l.file->buf + ix_line_begin, l.ix - ix_line_begin);
 
-                }
-            }
-        }
+                        // [ix, ix_str_end)
+                        const int ix_str_end = l.ix + state->input.size();
+                        const mu_Color CODE_WITH_HIGHLIGHT_COLOR = QUERY_COLOR;
+                        mu_draw_text(ctx, font, l.file->buf + l.ix, ix_str_end - l.ix, mu_vec2(r.x, r.y), CODE_WITH_HIGHLIGHT_COLOR);
+                        r.x += r_get_text_width(l.file->buf + l.ix, ix_str_end - l.ix);
 
-        mu_layout_end_column(ctx);
 
-        mu_end_window(ctx);
+                        // [ix+search str, ix end)
+                        mu_draw_text(ctx, font, l.file->buf + ix_str_end, ix_line_end - ix_str_end, mu_vec2(r.x, r.y), CODE_NO_HIGHLIGHT_COLOR);
+                        r.x += r_get_text_width(l.file->buf + ix_str_end, ix_line_end - ix_str_end);
 
-    }
-
+                    } // end j
+                } // end i
+            } // end t
+        } // end false
+		mu_layout_end_column(ctx);
+		mu_end_window(ctx);
+    }// end mu_begin_window
 }
 
 void mu_bottom_line(mu_Context* ctx, BottomlineState* s) {
@@ -577,7 +575,7 @@ void mu_bottom_line(mu_Context* ctx, BottomlineState* s) {
 
 
 
-void mu_editor(mu_Context* ctx, EditorState *ed) {
+void mu_editor(mu_Context* ctx, EditorState *ed, CommandPaletteState *pal) {
     int width = -1;
     mu_Font font = ctx->style->font;
     mu_Color color = ctx->style->colors[MU_COLOR_TEXT];
@@ -617,8 +615,8 @@ void mu_editor(mu_Context* ctx, EditorState *ed) {
         
 		if (ctx->key_down & MU_KEY_CTRL && ctx->key_pressed & MU_KEY_COMMAND_PALETTE) {
             // mu_open_popup(ctx, "CMD");
-            g_command_palette_state.open = true;
-            g_command_palette_state.input = "";
+            pal->open = true;
+            pal->input = "";
         }
 		/* handle key press. stolen from mu_textbox_raw */
 		for (int i = 0; i < strlen(ctx->input_text); ++i) {
@@ -677,10 +675,10 @@ void mu_editor(mu_Context* ctx, EditorState *ed) {
 }
 
 
-static void editor_window(mu_Context* ctx) {
+static void editor_window(mu_Context* ctx, EditorState *ed, CommandPaletteState *pal, BottomlineState *bot) {
     const int window_opts =  MU_OPT_NOTITLE | MU_OPT_NOCLOSE | MU_OPT_NORESIZE;
     // if (mu_begin_window_ex(ctx, "Editor", mu_rect(0, 0, 1400, 768), window_opts)) {
-    if (mu_begin_window(ctx, "Editor", mu_rect(0, 0, 1400, 768))) { 
+    if (mu_begin_window(ctx, "Editor", mu_rect(0, 720/2, 1400, 720/2))) { 
         /* output text panel */
         int width_row[] = { -1 };
         mu_layout_row(ctx, 1, width_row, -25);
@@ -688,13 +686,13 @@ static void editor_window(mu_Context* ctx) {
         // mu_Container* panel = mu_get_current_container(ctx);
         mu_layout_row(ctx, 1, width_row, -1);
         // TODO: look at mu_textbox to see how to handle input.
-        mu_editor(ctx, &g_editor_state);
+        mu_editor(ctx, ed, pal);
         // find a better way to make this the focus?
         // TODO: find less jank approach to make this focused at start time.
-        mu_set_focus(ctx, editor_state_mu_id(ctx, &g_editor_state));
+        mu_set_focus(ctx, editor_state_mu_id(ctx, ed));
         // mu_end_panel(ctx);
 
-		mu_bottom_line(ctx, &g_bottom_line_state);
+		mu_bottom_line(ctx, bot);
         //if (logbuf_updated) {
         //    panel->scroll.y = panel->content_size.y;
         //    logbuf_updated = 0;
@@ -767,15 +765,7 @@ static void style_window(mu_Context* ctx) {
 }
 
 
-static void process_frame(mu_Context* ctx) {
-    // fprintf(stderr, "mu_begin?\n");
-    mu_finalize_events_begin_draw(ctx);
-    // style_window(ctx);
-    // log_window(ctx);
-    // test_window(ctx);
-    editor_window(ctx);
-	mu_command_palette(ctx, &g_command_palette_state);
-    mu_end(ctx);
+static void process_frame(mu_Context* ctx, CommandPaletteState *pal) {
 }
 
 
@@ -842,141 +832,136 @@ struct Task {
 
 
 
-struct TaskIndexFile : public Task {
-    std::filesystem::path p;
-    trie_node* index;
-    Loc loc;
-	TaskIndexFile(trie_node* index, std::filesystem::path p) : index(index), p(p) {}
+struct TaskManager {
+    bool indexing; // tracks whether index is being built.
+    std::filesystem::recursive_directory_iterator ix_it; // iterator to index walker.
+    std::optional<Loc> index_loc; // current location being read by index.
 
-    TaskStateKind run(std::stack<Task*>& tasks) {
-        if (!loc.file) {
-            FILE *fp = _wfopen(p.c_str(), L"rb");
-            assert(fp && "unable to open file");
-
-            fseek(fp, 0, SEEK_END);
-            const int total_size = ftell(fp);
-
-            loc.file = new File(p.string(), total_size);
-            loc.ix = 0;
-            loc.line = 1;
-            loc.col = 1;
-
-            fseek(fp, 0, SEEK_SET);
-            loc.file->buf = new char[total_size];
-            const int nread = fread(loc.file->buf, 1, total_size, fp);
-            fclose(fp);
-            assert(nread == total_size && "unable to read file");
-
-            g_bottom_line_state.info = "ix: " + p.string() + " | 0%";
-            tasks.push(this);
-			return TaskStateKind::TSK_CONTINUE;
-        }
-
-        assert(loc.valid());
-        while (loc.ix < loc.file->len && is_whitespace(loc.get())) { 
-            loc = loc.advance();
-        }
-
-        assert(loc.valid());
-        if (loc.eof()) {
-			g_bottom_line_state.info = "DONE indexing " + p.string();
-            return TaskStateKind::TSK_DONE;
-        }
-        assert(!is_whitespace(loc.get()));
-
-        Loc eol = loc;
-        static const int MAX_SUFFIX_LEN = 100;
-        while (!eol.eof() && !is_newline(eol.get()) && (eol.ix - loc.ix) <= MAX_SUFFIX_LEN) {
-            eol = eol.advance();
-        }
-
-        for (Loc sufloc = loc; sufloc.ix < eol.ix; sufloc = sufloc.advance()) {
-            index_add(&g_index,
-                loc.file->buf + sufloc.ix,
-                eol.ix - sufloc.ix, sufloc);
-			assert(!sufloc.eof());
-        }
-
-        const float percent = 100.0 * ((float)loc.ix / loc.file->len);
-        g_bottom_line_state.info = "ix: ";
-        g_bottom_line_state.info += p.string();
-        g_bottom_line_state.info += " | ";
-        g_bottom_line_state.info += std::to_string(percent);
-        g_bottom_line_state.info += " | ";
-        for (int i = loc.ix; i < eol.ix; ++i) {
-            g_bottom_line_state.info += loc.file->buf[i];
-        }
-
-        loc = eol;
-		tasks.push(this);
-		return TaskStateKind::TSK_CONTINUE;
-    }
+    bool querying; // tracks whether query is being run on index.
+    std::string query_string;
+    int query_sequence_number;
 };
 
-struct TaskWalkDirectory : public Task {
-    trie_node* index;
-    std::filesystem::recursive_directory_iterator it;
 
-    TaskWalkDirectory(trie_node *index, std::filesystem::path root) : index(index), it(root) { }
-	TaskStateKind run(std::stack<Task*>& tasks) {
-        if (it == std::filesystem::end(it)) {
-            return TaskStateKind::TSK_DONE;
-        } 
-        std::filesystem::path curp = *it;
-        g_bottom_line_state.info = "walking: " + curp.string();
-        if (std::filesystem::is_regular_file(curp)) {
-            tasks.push(new TaskIndexFile(index, curp));
-        }
-        ++it;
+void task_manager_explore_directory_timeslice(TaskManager *s, BottomlineState *bot) {
+	assert(s->indexing);
+    if (s->ix_it == std::filesystem::end(s->ix_it)) {
+        s->indexing = false;
+        return;
+    };
 
-        tasks.push(this);
-        return TaskStateKind::TSK_CONTINUE;
+    std::filesystem::path curp = *s->ix_it;
+    s->ix_it++;
+	bot->info = "walking: " + curp.string();
+    if (!std::filesystem::is_regular_file(curp)) {
+        return;
     }
-};
 
-struct TaskCommandPaletteMatch : public Task {
-	// used by the task to check if it is stale.
-    int sequence_number; 
-    CommandPaletteState* state;
-    std::stack<trie_node*> dfs;
-    TaskCommandPaletteMatch(int sequence_number, CommandPaletteState *state) : sequence_number(sequence_number), state(state) {
-        dfs.push(&g_index);
+    assert(std::filesystem::is_regular_file(curp));
+	FILE* fp = _wfopen(curp.c_str(), L"rb");
+	assert(fp && "unable to open file");
+
+	fseek(fp, 0, SEEK_END);
+	const int total_size = ftell(fp);
+
+	s->index_loc = Loc();
+	s->index_loc->file = new File(curp.string(), total_size);
+	s->index_loc->file->buf = new char[total_size];
+	s->index_loc->ix = 0;
+	s->index_loc->line = 1;
+	s->index_loc->col = 1;
+
+	fseek(fp, 0, SEEK_SET);
+	const int nread = fread(s->index_loc->file->buf, 1, total_size, fp);
+	fclose(fp);
+	assert(nread == total_size && "unable to read file");
+	bot->info = "ix: " + curp.string() + " | 0%";
+}
+
+void task_manager_index_file_timeslice(TaskManager *s, BottomlineState *bot) {
+    assert(s->index_loc);
+    assert(s->index_loc->valid());
+
+	while (!s->index_loc->eof()  && is_whitespace(s->index_loc->get())) {
+        s->index_loc = s->index_loc->advance();
+	}
+
+	assert(s->index_loc->valid());
+	if (s->index_loc->eof()) {
+        bot->info = "DONE indexing " + s->index_loc->file->path;
+		s->index_loc = {};
+		return;
+	}
+	assert(!is_whitespace(s->index_loc->get()));
+
+	Loc eol = *s->index_loc;
+	static const int MAX_SUFFIX_LEN = 80;
+	static const int MAX_NGRAMS = 3;
+	int ngrams = 0;
+	while (!eol.eof() && !is_newline(eol.get()) && ngrams < MAX_NGRAMS && (eol.ix - s->index_loc->ix) <= MAX_SUFFIX_LEN) {
+		if (is_whitespace(eol.get())) { ngrams++; }
+		eol = eol.advance();
+	}
+
+	for (Loc sufloc = *s->index_loc; sufloc.ix < eol.ix; sufloc = sufloc.advance()) {
+		index_add(&g_index,
+			s->index_loc->file->buf + sufloc.ix,
+			eol.ix - sufloc.ix, sufloc);
+		assert(!sufloc.eof());
+	}
+
+	const float percent = 100.0 * ((float)s->index_loc->ix / s->index_loc->file->len);
+	bot->info = "ix: ";
+    bot->info += s->index_loc->file->path;
+	bot->info += " | ";
+	bot->info += std::to_string(percent);
+	bot->info += " | ";
+	for (int i = s->index_loc->ix; i < eol.ix; ++i) {
+		bot->info += s->index_loc->file->buf[i];
+	}
+
+	s->index_loc = eol;
+}
+
+
+void task_manager_query_timeslice(TaskManager* s, CommandPaletteState *pal) {
+
+}
+
+void task_manager_run_timeslice(TaskManager *s, CommandPaletteState *pal, BottomlineState *bot) {
+    if (s->indexing) {
+        if (!s->index_loc) {
+            task_manager_explore_directory_timeslice(s, bot);
+        }
+        else {
+            task_manager_index_file_timeslice(s, bot);
+        }
     }
-    TaskStateKind run(std::stack<Task*> &tasks) {
-        if (sequence_number != state->sequence_number) {
-            return TaskStateKind::TSK_DONE;
-        }
 
+    if (s->querying) {
+        task_manager_query_timeslice(s, pal);
     }
-};
-
-void process_tasks(std::stack<Task*>& tasks) {
-    const clock_t clock_begin = clock();
-
-    do {
-        if (!tasks.size()) {
-            return;
-        }
-        Task* t = tasks.top(); tasks.pop();
-        TaskStateKind k = t->run(tasks);
-        if (k == TaskStateKind::TSK_DONE) {
-            delete t;
-        } else if (k == TaskStateKind::TSK_ERROR) {
-            assert(false && "error when task was run.");
-        }
-    } while (clock() - clock_begin < TARGET_CLOCKS_PER_FRAME * 0.5);
 }
 
 int main(int argc, char** argv) {
     setlocale(LC_ALL, "");
     std::stack<Task*> g_tasks;
+
     
     const std::filesystem::path root_path(argc == 1 ? "C:\\Users\\bollu\\phd\\lean4\\src\\" : argv[1]);
     std::cout << "root_path: " << root_path << "\n";
 
+    TaskManager g_task_manager;
+    g_task_manager.indexing = true;
+    g_task_manager.ix_it = std::filesystem::recursive_directory_iterator(root_path);
+
     g_index.parent = &g_index;
-    g_tasks.push(new TaskWalkDirectory(&g_index, root_path));
-    g_bottom_line_state.info = "FOO BAR";
+
+    BottomlineState g_bottom_line_state;
+    g_bottom_line_state.info = "WELCOME";
+
+    CommandPaletteState g_command_palette_state;
+    EditorState g_editor_state;
 
     SDL_Init(SDL_INIT_EVERYTHING);
     r_init();
@@ -1023,10 +1008,16 @@ int main(int argc, char** argv) {
         }
         
         // Handle tasks.
-        process_tasks(g_tasks);
+		const clock_t clock_begin = clock();
+		do {
+			task_manager_run_timeslice(&g_task_manager, &g_command_palette_state, &g_bottom_line_state);
+		} while (clock() - clock_begin < TARGET_CLOCKS_PER_FRAME * 0.5);
 
         /* process frame */
-        process_frame(ctx);
+		mu_finalize_events_begin_draw(ctx);
+		editor_window(ctx, &g_editor_state, &g_command_palette_state, &g_bottom_line_state);
+		mu_command_palette(ctx, &g_command_palette_state);
+		mu_end(ctx);
 
         /* render */
         r_clear(mu_color(bg[0], bg[1], bg[2], 255));
