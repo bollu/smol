@@ -304,6 +304,7 @@ struct Cursor{
     int line = 0; int col = 0;
 };
 
+// TODO: rename to viewer.
 struct EditorState {
     std::vector<std::string> contents;
     Cursor loc;
@@ -314,11 +315,19 @@ struct BottomlineState {
     std::string info;
 };
 
+enum class FocusState {
+    FSK_Palette,
+    FSK_Viewer,
+
+};
+
 struct CommandPaletteState {
-    bool open = true;
     std::string input;
     std::vector<Loc> matches;
     int sequence_number = 0;
+	// index of selected option.
+   // invariant: selected_ix <= matches.len(). Is equal to denote deselected index.
+	int selected_ix =0;
 };
 
 mu_Id editor_state_mu_id(mu_Context *ctx, EditorState* ed) {
@@ -456,35 +465,42 @@ void mu_draw_cursor(mu_Context* ctx, mu_Rect* r) {
 
 
 
-void mu_command_palette(mu_Context* ctx, CommandPaletteState* pal) {
-    if (!pal->open) { return; }
+void mu_command_palette(mu_Context* ctx, CommandPaletteState* pal, FocusState *focus) {
+	assert(pal->selected_ix <= (int)pal->matches.size());
+
+    const bool focused = *focus == FocusState::FSK_Palette;
     if (mu_begin_window(ctx, "CMD", mu_Rect(0, 0, 1400, 720/2))) {
+        if (focused) {
+            // TODO: Debounce
+            if (ctx->key_pressed & MU_KEY_TAB) {
+                *focus = FocusState::FSK_Palette;
+            }
 
+            if (ctx->key_pressed & MU_KEY_BACKSPACE) {
+                pal->sequence_number++;
+                pal->input.resize(std::max<int>(0, pal->input.size() - 1));
+            }
 
-        // assert(false && "open palette");
-        mu_set_focus(ctx, ctx->last_id);
+            // TODO: Ask @codelegend for clean way to handle this.
+            if (ctx->key_pressed & MU_KEY_DOWNARROW) {
+                pal->selected_ix = std::min<int>(pal->selected_ix + 1, pal->matches.size() - 1);
+            }
 
-        if (ctx->key_pressed & MU_KEY_BACKSPACE) {
-            pal->sequence_number++;
-            pal->input.resize(std::max<int>(0, pal->input.size() - 1));
-        }
+            if (ctx->key_pressed & MU_KEY_UPARROW) {
+                pal->selected_ix = std::max<int>(0, pal->selected_ix - 1);
+            }
 
-        // if (ctx->key_pressed & MU_KEY_COMMAND_PALETTE) {
-        //     // TODO: need to debounce.
-        //     g_command_palette_state.open = false;
-        //     g_command_palette_state.input = "";
-        // }
+            if (ctx->key_pressed & MU_KEY_RETURN) {
+                *focus = FocusState::FSK_Viewer;
+            }
 
-        if (ctx->key_pressed & MU_KEY_RETURN) {
-            // TODO: need to debounce.
-            pal->open = false;
-            pal->input = "";
-        }
-
-        if (strlen(ctx->input_text)) {
-            /* handle key press. stolen from mu_textbox_raw */
-            pal->sequence_number++;
-            pal->input += std::string(ctx->input_text);
+            if (strlen(ctx->input_text)) {
+                /* handle key press. stolen from mu_textbox_raw */
+                pal->sequence_number++;
+                pal->input += std::string(ctx->input_text);
+                pal->matches = {};
+                pal->selected_ix = 0;
+            }
         }
 
         mu_Font font = ctx->style->font;
@@ -496,14 +512,21 @@ void mu_command_palette(mu_Context* ctx, CommandPaletteState* pal) {
         // mu_draw_text(ctx, font, "Command Palette", strlen("Command Palette"), mu_vec2(r.x, r.y), ctx->style->colors[MU_COLOR_TEXT]);
         // mu_draw_text(ctx, font, state->input.c_str(), state->input.size(), mu_vec2(0, 20), ctx->style->colors[MU_COLOR_TEXT]);
         const mu_Color QUERY_COLOR = { .r = 187, .g = 222, .b = 251, .a = 255 };
-        mu_draw_text(ctx, font, (pal->input + "|").c_str(), pal->input.size() + 1, mu_vec2(r.x, r.y), QUERY_COLOR);
+        mu_draw_text(ctx, font, pal->input .c_str(), pal->input.size(), mu_vec2(r.x, r.y), QUERY_COLOR);
+        r.x += r_get_text_width(pal->input.c_str(), pal->input.size());
+        if (focused) {
+			mu_draw_text(ctx, font, "|", 1, mu_vec2(r.x, r.y), QUERY_COLOR);
+
+        }
 
 
 
         static const int NUM_ANSWERS = 80;
 		for (int i = 0; i < pal->matches.size() && i < NUM_ANSWERS; ++i) {
 			const Loc l = pal->matches[i];
-			std::string out = l.file->path;
+            std::string out;
+
+            out += l.file->path;
 			out += ":";
 
 			int ix_line_end = l.ix;
@@ -521,8 +544,16 @@ void mu_command_palette(mu_Context* ctx, CommandPaletteState* pal) {
 			}
 
 			mu_Rect r = mu_layout_next(ctx);
+
+            const bool SELECTED = focused && (i == pal->selected_ix);
+			const mu_Color SELECTION_COLOR = { .r = 255, .g = 255, .b = 255, .a = 255 };
+            const char selection = SELECTED ? '>' : ' ';
+			mu_draw_text(ctx, font, &selection, 1, mu_vec2(r.x, r.y), SELECTION_COLOR);
+            r.x += r_get_text_width(&selection, 1);
+
 			const mu_Color PATH_COLOR = { .r = 100, .g = 100, .b = 100, .a = 255 };
-			mu_draw_text(ctx, font, l.file->path.c_str(), l.file->path.size(), mu_vec2(r.x, r.y), PATH_COLOR);
+			mu_draw_text(ctx, font, l.file->path.c_str(), l.file->path.size(), mu_vec2(r.x, r.y), 
+                SELECTED ? SELECTION_COLOR : PATH_COLOR);
 			r.x += r_get_text_width(l.file->path.c_str(), l.file->path.size());
 
 			mu_draw_text(ctx, font, ":", 1, mu_vec2(r.x, r.y), PATH_COLOR);
@@ -531,7 +562,8 @@ void mu_command_palette(mu_Context* ctx, CommandPaletteState* pal) {
 
 			const mu_Color CODE_NO_HIGHLIGHT_COLOR = { .r = 180, .g = 180, .b = 180, .a = 255 };
 			// [ix_line_begin, ix)
-			mu_draw_text(ctx, font, l.file->buf + ix_line_begin, l.ix - ix_line_begin, mu_vec2(r.x, r.y), CODE_NO_HIGHLIGHT_COLOR);
+			mu_draw_text(ctx, font, l.file->buf + ix_line_begin, l.ix - ix_line_begin, mu_vec2(r.x, r.y), 
+                SELECTED ? SELECTION_COLOR : CODE_NO_HIGHLIGHT_COLOR);
 			r.x += r_get_text_width(l.file->buf + ix_line_begin, l.ix - ix_line_begin);
 
 			// [ix, ix_str_end)
@@ -542,7 +574,8 @@ void mu_command_palette(mu_Context* ctx, CommandPaletteState* pal) {
 
 
 			// [ix+search str, ix end)
-			mu_draw_text(ctx, font, l.file->buf + ix_str_end, ix_line_end - ix_str_end, mu_vec2(r.x, r.y), CODE_NO_HIGHLIGHT_COLOR);
+			mu_draw_text(ctx, font, l.file->buf + ix_str_end, ix_line_end - ix_str_end, mu_vec2(r.x, r.y), 
+                SELECTED ? SELECTION_COLOR : CODE_NO_HIGHLIGHT_COLOR);
 			r.x += r_get_text_width(l.file->buf + ix_str_end, ix_line_end - ix_str_end);
 
 		} // end i
@@ -560,7 +593,7 @@ void mu_bottom_line(mu_Context* ctx, BottomlineState* s) {
 
 
 
-void mu_editor(mu_Context* ctx, EditorState *ed, CommandPaletteState *pal) {
+void mu_editor(mu_Context* ctx, EditorState *ed, FocusState *focus) {
     int width = -1;
     mu_Font font = ctx->style->font;
     mu_Color color = ctx->style->colors[MU_COLOR_TEXT];
@@ -571,7 +604,7 @@ void mu_editor(mu_Context* ctx, EditorState *ed, CommandPaletteState *pal) {
 
 
 	mu_update_control(ctx, id, cnt->body, MU_OPT_HOLDFOCUS);
-    const bool focused = ctx->focus == id;
+    const bool focused = *focus == FocusState::FSK_Viewer;
 	if (focused) {
 
         if (ctx->key_pressed & MU_KEY_RETURN) {
@@ -598,10 +631,8 @@ void mu_editor(mu_Context* ctx, EditorState *ed, CommandPaletteState *pal) {
             editor_state_backspace_char(*ed); 
         }
         
-		if (ctx->key_down & MU_KEY_CTRL && ctx->key_pressed & MU_KEY_COMMAND_PALETTE) {
-            // mu_open_popup(ctx, "CMD");
-            pal->open = true;
-            pal->input = "";
+		if (ctx->key_pressed & MU_KEY_TAB) {
+            *focus = FocusState::FSK_Palette;
         }
 		/* handle key press. stolen from mu_textbox_raw */
 		for (int i = 0; i < strlen(ctx->input_text); ++i) {
@@ -660,44 +691,16 @@ void mu_editor(mu_Context* ctx, EditorState *ed, CommandPaletteState *pal) {
 }
 
 
-static void editor_window(mu_Context* ctx, EditorState *ed, CommandPaletteState *pal, BottomlineState *bot) {
+static void editor_window(mu_Context* ctx, EditorState *ed, BottomlineState *bot, FocusState *focus) {
     const int window_opts =  MU_OPT_NOTITLE | MU_OPT_NOCLOSE | MU_OPT_NORESIZE;
     // if (mu_begin_window_ex(ctx, "Editor", mu_rect(0, 0, 1400, 768), window_opts)) {
     if (mu_begin_window(ctx, "Editor", mu_rect(0, 720/2, 1400, 720/2))) { 
-        /* output text panel */
         int width_row[] = { -1 };
         mu_layout_row(ctx, 1, width_row, -25);
-        // mu_begin_panel(ctx, "Log Output");
-        // mu_Container* panel = mu_get_current_container(ctx);
         mu_layout_row(ctx, 1, width_row, -1);
-        // TODO: look at mu_textbox to see how to handle input.
-        mu_editor(ctx, ed, pal);
-        // find a better way to make this the focus?
-        // TODO: find less jank approach to make this focused at start time.
         mu_set_focus(ctx, editor_state_mu_id(ctx, ed));
-        // mu_end_panel(ctx);
-
+        mu_editor(ctx, ed, focus);
 		mu_bottom_line(ctx, bot);
-        //if (logbuf_updated) {
-        //    panel->scroll.y = panel->content_size.y;
-        //    logbuf_updated = 0;
-        //}
-
-        ///* input textbox + submit button */
-        //static char buf[128];
-        //int submitted = 0;
-        //int widths[] = { -70, -1 };
-        //mu_layout_row(ctx, 2, widths, 0);
-        //if (mu_textbox(ctx, buf, sizeof(buf)) & MU_RES_SUBMIT) {
-        //    mu_set_focus(ctx, ctx->last_id);
-        //    submitted = 1;
-        //}
-        //if (mu_button(ctx, "Submit")) { submitted = 1; }
-        //if (submitted) {
-        //    write_log(buf);
-        //    buf[0] = '\0';
-        //}
-
         mu_end_window(ctx);
     }
 }
@@ -778,6 +781,9 @@ int key_map(int sdl_key) {
     if (sdl_key == SDLK_RIGHT) return MU_KEY_RIGHTARROW;
     if (sdl_key == SDLK_BACKSPACE) return MU_KEY_BACKSPACE;
     if (sdl_key == SDLK_p) return MU_KEY_COMMAND_PALETTE;
+    if (sdl_key == SDLK_TAB) {
+        return MU_KEY_TAB;
+    }
     return 0;
 
 }
@@ -886,12 +892,13 @@ void task_manager_index_file_timeslice(TaskManager *s, BottomlineState *bot, Tri
 }
 
 
+// TODO: I need some way to express that TaskManager is only alowed to insert into pal->matches.
+// must be monotonic.
 void task_manager_query_timeslice(TaskManager* s, CommandPaletteState *pal, TrieNode *g_index) {
     assert(s->query_sequence_number <= pal->sequence_number);
     if (s->query_sequence_number < pal->sequence_number) {
         s->query_sequence_number = pal->sequence_number;
-        s->query_walk_stack = std::stack<TrieNode* > ();
-		pal->matches = {};
+        s->query_walk_stack = std::stack<TrieNode* >();
 
         if (pal->input.size() == 0) { 
             return;
@@ -948,6 +955,8 @@ int main(int argc, char** argv) {
     CommandPaletteState g_command_palette_state;
     EditorState g_editor_state;
 
+    FocusState g_focus_state = FocusState::FSK_Viewer;
+
     SDL_Init(SDL_INIT_EVERYTHING);
     r_init();
 
@@ -997,8 +1006,8 @@ int main(int argc, char** argv) {
 
         /* process frame */
 		mu_finalize_events_begin_draw(ctx);
-		editor_window(ctx, &g_editor_state, &g_command_palette_state, &g_bottom_line_state);
-		mu_command_palette(ctx, &g_command_palette_state);
+		editor_window(ctx, &g_editor_state, &g_bottom_line_state, &g_focus_state);
+		mu_command_palette(ctx, &g_command_palette_state, &g_focus_state);
 		mu_end(ctx);
 
         /* render */

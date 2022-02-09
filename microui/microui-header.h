@@ -112,6 +112,7 @@ enum {
   MU_KEY_UPARROW      = (1 << 7),
   MU_KEY_DOWNARROW    = (1 << 8),
   MU_KEY_COMMAND_PALETTE = (1 << 9),
+  MU_KEY_TAB = (1 << 10),
 };
 
 
