@@ -27,8 +27,8 @@ const clock_t TARGET_CLOCKS_PER_FRAME = CLOCKS_PER_SEC / TARGET_FRAMES_PER_SECON
 
 struct File {
     std::string path;
-    char* buf;
-    int len;
+    char* buf = nullptr;
+    int len = 0;
     File(std::string path, int len) : path(path), len(len) {};
 
 };
@@ -58,9 +58,14 @@ struct Loc {
     bool valid() const {
         assert(file != nullptr);
         assert(ix >= 0);
-        assert(line >= 1);
-        assert(col >= 1);
+        assert(line >= 0);
+        assert(col >= 0);
         assert(ix <= file->len);
+        assert(ix - col >= 0);
+        // vv invariant for `col`.
+        assert(ix - col == 0 || is_newline(file->buf[ix - col]));
+        assert(line >= 0);
+        // expensive invariant: # of newlines (\n)s upto ix equal line.
         return true;
     }
 
@@ -88,7 +93,116 @@ struct Loc {
             return Loc(file, ix + 1, line, col + 1);
         }
     }
+
+	Loc retreat() const {
+        assert(valid());
+        Loc l = *this;
+		assert(l.valid());
+		if (l.ix == 0) { return l; }
+		l.ix--;
+		if (l.get() == '\n') {
+			if (l.ix > 0 && l.file->buf[l.ix - 1] == '\n') {
+				l.ix--;
+			}
+			l.line--;
+		}
+
+		l.col = 0;
+		while (l.ix - l.col > 0 && !is_newline(l.file->buf[l.ix - l.col])) {
+			l.col++;
+		}
+
+		// damn, that's a neat invariant of col.
+		assert(l.ix - l.col == 0 || is_newline(l.file->buf[l.ix - l.col]));
+		return l;
+	}
+
+
+    Loc start_of_cur_line() const {
+        assert(valid());
+        Loc l = *this;
+        l.ix -= col; l.col = 0;
+        return l;
+    }
+
+    Loc start_of_next_line() const {
+        assert(valid());
+        Loc l = *this;
+        while (!l.eof() && this->line == l.line) { l = l.advance();  }
+        return l;
+    }
+
+    Loc end_of_cur_line() const {
+        assert(valid());
+        Loc l = *this;
+        while (!l.eof() && !is_newline(l.get())) { l = l.advance();  }
+        return l;
+    }
+
+    Loc up() const {
+        assert(valid());
+        Loc l = *this;
+        while (l.ix > 0) {
+            l = l.retreat();
+            if (l.line < this->line) {
+                break;
+            }
+        }
+        if (l.ix == 0) { return l;  }
+        // l is now in a line before where we started.
+        assert(l.line == this->line - 1);
+
+        // l is at the rightmost position of the previous line.
+        // Thus, to align cursors, we must pull the column
+        // back towards us.
+        // It may be the case that the line before us simply
+        // does not have enough characters, which is why we do 
+        // not loop for [l.col == this.col]. example:
+        // b|     [l]
+        // aaaa|  [this]
+        while (l.col > this->col) {
+            Loc lnext = l.retreat();
+            if (lnext.line != l.line) { break;  }
+            else { l = lnext;  }
+        }
+        assert(l.line == this->line - 1);
+        assert(l.col <= this->col);
+        return l;
+    }
+
+    // TODO: ask @codelegend for refactoring.
+    Loc down() const {
+        assert(valid());
+        Loc l = *this;
+        while (!l.eof()) {
+            l = l.advance();
+            if (l.line > this->line) {
+                break;
+            }
+        }
+        if (l.eof()) { return l; }
+        // l is now in a line before where we started.
+        assert(l.line == this->line + 1);
+
+        // note that l is at the beginning of the next
+        // line. Thus, we must push l forward to align with us.
+        // we must take care to not skip into the next line accidentally.
+        // It may be that the next line does not have enough characters.
+        // So we check that we don't run over to the next line.
+        // aaaa|  [this]
+        // b|     [l]
+        while (l.col < this->col) {
+            Loc lnext = l.advance();
+            if (lnext.line != l.line) { break;  }
+            else { l = lnext;  }
+        }
+        return l;
+        assert(l.line == this->line + 1);
+        assert(l.col <= this->col);
+    }
+
 };
+
 
 struct TrieNode {
     std::unordered_map<int, TrieNode*> next;
@@ -300,15 +414,14 @@ static void log_window(mu_Context* ctx) {
 }
 
 
-struct Cursor{
-    int line = 0; int col = 0;
-};
-
 // TODO: rename to viewer.
-struct EditorState {
-    std::vector<std::string> contents;
-    Cursor loc;
-
+struct ViewerState {
+    // at file focus
+    Loc focus;
+    // cursor
+    Loc cursor;
+    // top line that is to be rendered.
+    int render_begin_line;
 };
 
 struct BottomlineState {
@@ -320,7 +433,6 @@ enum class FocusState {
     FSK_Viewer,
 
 };
-
 struct CommandPaletteState {
     std::string input;
     std::vector<Loc> matches;
@@ -330,137 +442,38 @@ struct CommandPaletteState {
 	int selected_ix =0;
 };
 
-mu_Id editor_state_mu_id(mu_Context *ctx, EditorState* ed) {
- return mu_get_id(ctx, &ed, sizeof(ed));
+mu_Id editor_state_mu_id(mu_Context *ctx, ViewerState* view) {
+ return mu_get_id(ctx, &view, sizeof(view));
 }
 
-void editor_state_move_left(EditorState& s) {
-    s.loc.col = std::max<int>(s.loc.col - 1, 0);
-}
-
-
-void editor_state_move_right(EditorState& s) {
-    assert(s.loc.line <= s.contents.size());
-    if (s.loc.line == s.contents.size()) { return; }
-    const std::string& curline = s.contents[s.loc.line];
-    s.loc.col = std::min<int>(s.loc.col + 1, curline.size());
-}
-
-void editor_state_move_up(EditorState& s) {
-    s.loc.line = std::max<int>(s.loc.line - 1, 0);
-    if (s.loc.line < s.contents.size()) {
-		 // can this be modeled as a connection on a bundle?
-        s.loc.col = std::min<int>(s.loc.col, s.contents[s.loc.line].size());
-    } else {
-        assert(s.loc.line == s.contents.size());
-        s.loc.col = 0;
-    }
+void editor_state_move_left(ViewerState& s) {
+    s.cursor.col = std::max<int>(s.cursor.col - 1, 0);
 }
 
 
-void editor_state_move_down(EditorState& s) {
-    s.loc.line = std::min<int>(s.loc.line + 1, s.contents.size());
-    if (s.loc.line < s.contents.size()) {
-		 // can this be modeled as a connection on a bundle?
-        s.loc.col = std::min<int>(s.loc.col, s.contents[s.loc.line].size());
-    } else {
-        assert(s.loc.line == s.contents.size());
-        s.loc.col = 0;
-    }
+void editor_state_move_right(ViewerState& s) {
+    assert(s.cursor.valid());
+    if (s.cursor.advance().eof()) { return;  }
+    if (is_newline(s.cursor.advance().get())) { return; }
+    s.cursor = s.cursor.advance();
+}
+
+void editor_state_move_up(ViewerState& s) {
+    s.cursor = s.cursor.up();
+    s.render_begin_line = std::min<int>(s.cursor.line, s.render_begin_line);
 }
 
 
-void editor_state_enter_char(EditorState& s) {
-    assert(s.loc.line <= s.contents.size());
-    if (s.loc.line == s.contents.size()) {
-        s.contents.push_back("");
-        s.loc.line++;
-        s.loc.col = 0;
-        return;
-    }
-    assert(s.loc.line < s.contents.size());
-    std::string& curline = s.contents[s.loc.line];
-    // think about [col=0].
-    std::string nextline(curline.begin() + s.loc.col, curline.end());
-    curline.resize(s.loc.col); 
-    // TODO: fix --- this is broken.
-    s.contents.push_back(std::string());
-    for (int i = s.contents.size() - 1; i > s.loc.line + 1; i--) {
-        s.contents[i] = s.contents[i - 1];
-    }
-    s.contents[s.loc.line+1] = nextline;
-    s.loc.line++;
-    s.loc.col = 0;
-    return;
-}
-
-void editor_state_backspace_char(EditorState& s) {
-    assert(s.loc.line <= s.contents.size());
-    if (s.loc.line == s.contents.size()) { 
-        if (s.loc.line == 0) { return; }
-        s.loc.line--;
-        s.loc.col = s.contents[s.loc.line].size();
-        return;
-    }
-
-    std::string& curline = s.contents[s.loc.line];
-    assert(s.loc.col <= curline.size());
-    if (s.loc.col == 0) {
-        if (s.loc.line == 0) {
-            return;
-        }
-        // delete the line. think about [line=1]
-        std::string& prevline = s.contents[s.loc.line - 1];
-        const int new_cursor_col = prevline.size();
-        const std::string& curline = s.contents[s.loc.line];
-        prevline += curline;
-
-        for (int i = s.loc.line; i < s.contents.size() - 2; i++) {
-            s.contents[i] = s.contents[i + 1];
-        }
-        s.loc.line--;
-        s.loc.col = new_cursor_col;
-        s.contents.pop_back();
-    }
-    else {
-        // think about what happens with [s.loc.col=1]. Rest will work.
-        std::string tafter(curline.begin() + s.loc.col, curline.end());
-        curline.resize(s.loc.col - 1); // need to remove col[0], so resize to length 0.
-        curline += tafter;
-        s.loc.col--;
-    }
-}
-
-void editor_state_insert_char(EditorState &s, char c) {
-    assert(s.loc.line <= s.contents.size());
-
-    if (s.loc.line == s.contents.size()) {
-        s.contents.push_back(std::string());
-    }
-    std::string& curline = s.contents[s.loc.line];
-    assert(s.loc.col <= curline.size());
-    if (s.loc.col == curline.size()) {
-        curline += c;
-        s.loc.col += 1;
-    } else {
-        // think at [col=0]. will work everywhere else.
-        std::string t(curline.begin() + s.loc.col, curline.end());
-        curline.resize(s.loc.col);
-        curline += c;
-        curline += t;
-        s.loc.col += 1;
-    }
+void editor_state_move_down(ViewerState& s) {
+    s.cursor = s.cursor.down();
 }
 
 void mu_draw_cursor(mu_Context* ctx, mu_Rect* r) {
-	// const int CURSOR_WIDTH = 3;
 	mu_Rect cursor = *r;
-	// cursor.w = CURSOR_WIDTH;
     mu_Font font = ctx->style->font;
     const int width = r_get_text_width("|", 1);
     mu_draw_text(ctx, font, "|", 1, mu_vec2(r->x - width/2, r->y), ctx->style->colors[MU_COLOR_TEXT]);
     r->w += width;
-	// mu_draw_rect(ctx, cursor, ctx->style->colors[MU_COLOR_TEXT]);
 }
 
 
@@ -593,12 +606,20 @@ void mu_bottom_line(mu_Context* ctx, BottomlineState* s) {
 
 
 
-void mu_editor(mu_Context* ctx, EditorState *ed, FocusState *focus) {
+void mu_viewer(mu_Context* ctx, ViewerState *view, FocusState *focus) {
+
+    if (view->cursor.ix == -1) {
+        assert(view->focus.ix == -1);
+        return;
+    }
+    assert(view->cursor.ix != -1);
+    assert(view->focus.ix != -1);
+
     int width = -1;
     mu_Font font = ctx->style->font;
     mu_Color color = ctx->style->colors[MU_COLOR_TEXT];
 
-    mu_Id id = editor_state_mu_id(ctx, ed); 
+    mu_Id id = editor_state_mu_id(ctx, view); 
     mu_Container* cnt = mu_get_current_container(ctx);
     assert(cnt && "must be within container");
 
@@ -607,46 +628,46 @@ void mu_editor(mu_Context* ctx, EditorState *ed, FocusState *focus) {
     const bool focused = *focus == FocusState::FSK_Viewer;
 	if (focused) {
 
-        if (ctx->key_pressed & MU_KEY_RETURN) {
-            editor_state_enter_char(*ed);
-        }
-
         if (ctx->key_pressed & MU_KEY_UPARROW) {
-            editor_state_move_up(*ed);
+            editor_state_move_up(*view);
         }
 
         if (ctx->key_pressed & MU_KEY_DOWNARROW) {
-            editor_state_move_down(*ed);
+            editor_state_move_down(*view);
         }
 
         if (ctx->key_pressed & MU_KEY_LEFTARROW) {
-            editor_state_move_left(*ed);
+            editor_state_move_left(*view);
         }
 
         if (ctx->key_pressed & MU_KEY_RIGHTARROW) {
-            editor_state_move_right(*ed);
+            editor_state_move_right(*view);
         }
 
-        if (ctx->key_pressed & MU_KEY_BACKSPACE) {
-            editor_state_backspace_char(*ed); 
-        }
-        
 		if (ctx->key_pressed & MU_KEY_TAB) {
             *focus = FocusState::FSK_Palette;
         }
-		/* handle key press. stolen from mu_textbox_raw */
-		for (int i = 0; i < strlen(ctx->input_text); ++i) {
-			editor_state_insert_char(*ed, ctx->input_text[i]);
-		}
 	}
+
+
 
     mu_layout_begin_column(ctx);
     mu_layout_row(ctx, 1, &width, ctx->text_height(font));
 	// mu_draw_control_frame(ctx, id, cnt->body, MU_COLOR_BASE, 0);
-    const int MAX_LINES = 100;
-    for (int l = 0; l < MAX_LINES; ++l) {
+
+    const int START_LINES_UP = 50;
+    const int NLINES = 100;
+    Loc left = view->cursor;
+    for (int i = 0; i < START_LINES_UP; ++i) { left = left.up(); }
+    left = left.start_of_cur_line();
+
+    for (int l = 0; l < NLINES; ++l) {
         mu_Rect r = mu_layout_next(ctx);
 
+        // have exhausted text.
+        if (left.eof()) { break; }
+
+        // 1. draw line number
         char lineno_str[12];
         itoa(l, lineno_str, 10);
         const int total_len = 5;
@@ -657,41 +678,43 @@ void mu_editor(mu_Context* ctx, EditorState *ed, FocusState *focus) {
         lineno_str[total_len] = 0;
         lineno_str[total_len + 1] = 0;
         mu_draw_text(ctx, font, lineno_str, strlen(lineno_str), mu_vec2(r.x, r.y), color);
-        // line number width
         r.x += ctx->text_width(font, lineno_str, strlen(lineno_str));
-        if (l > ed->contents.size()) { continue; }
-        if (l == ed->contents.size()) {
-            if (ed->loc.line == l && focused) {
-                mu_draw_cursor(ctx, &r);
-            }
-            continue;
-        }
-        assert(l < ed->contents.size());
-        const char* word = ed->contents[l].c_str();
+
+        // line number width
+        assert(!left.eof());
+
+        const Loc right = left.end_of_cur_line();
+        assert(right.line == left.line);
+        assert(right.eof() || is_newline(right.get()));
+
         r.h = ctx->text_height(font);
-        for (int i = 0; i < ed->contents[l].size(); ++i) {
+        // draw text.
+        for (Loc cur = left; cur.ix < right.ix; cur = cur.advance()) {
 			if (focused && 
-                ed->loc.line == l && 
-                ed->loc.col == i) {
+                view->cursor.line == cur.line && 
+                view->cursor.col == cur.col) {
 				mu_draw_cursor(ctx, &r);
 			}
 
-            mu_draw_text(ctx, font, ed->contents[l].c_str()+ i, 1, mu_vec2(r.x, r.y), color);
-            r.x += ctx->text_width(font, ed->contents[l].c_str() + i, 1);
-
+            const char c = cur.get();
+            mu_draw_text(ctx, font, &c, 1, mu_vec2(r.x, r.y), color);
+            r.x += ctx->text_width(font, &c, 1);
 		}
 
         // cursor
-        if (ed->loc.line == l && ed->loc.col == ed->contents[l].size()) {
+        if (view->cursor.line == l && view->cursor.col == right.col) {
             mu_draw_cursor(ctx, &r);
         }
+
+        // next line;
+        left = right.advance();
     }
 
     mu_layout_end_column(ctx);
 }
 
 
-static void editor_window(mu_Context* ctx, EditorState *ed, BottomlineState *bot, FocusState *focus) {
+static void viewer_window(mu_Context* ctx, ViewerState *ed, BottomlineState *bot, FocusState *focus) {
     const int window_opts =  MU_OPT_NOTITLE | MU_OPT_NOCLOSE | MU_OPT_NORESIZE;
     // if (mu_begin_window_ex(ctx, "Editor", mu_rect(0, 0, 1400, 768), window_opts)) {
     if (mu_begin_window(ctx, "Editor", mu_rect(0, 720/2, 1400, 720/2))) { 
@@ -699,7 +722,7 @@ static void editor_window(mu_Context* ctx, EditorState *ed, BottomlineState *bot
         mu_layout_row(ctx, 1, width_row, -25);
         mu_layout_row(ctx, 1, width_row, -1);
         mu_set_focus(ctx, editor_state_mu_id(ctx, ed));
-        mu_editor(ctx, ed, focus);
+        mu_viewer(ctx, ed, focus);
 		mu_bottom_line(ctx, bot);
         mu_end_window(ctx);
     }
@@ -836,8 +859,8 @@ void task_manager_explore_directory_timeslice(TaskManager *s, BottomlineState *b
 	s->index_loc->file = new File(curp.string(), total_size);
 	s->index_loc->file->buf = new char[total_size];
 	s->index_loc->ix = 0;
-	s->index_loc->line = 1;
-	s->index_loc->col = 1;
+	s->index_loc->line = 0;
+	s->index_loc->col = 0;
 
 	fseek(fp, 0, SEEK_SET);
 	const int nread = fread(s->index_loc->file->buf, 1, total_size, fp);
@@ -953,9 +976,9 @@ int main(int argc, char** argv) {
     g_bottom_line_state.info = "WELCOME";
 
     CommandPaletteState g_command_palette_state;
-    EditorState g_editor_state;
+    ViewerState g_editor_state;
 
-    FocusState g_focus_state = FocusState::FSK_Viewer;
+    FocusState g_focus_state = FocusState::FSK_Palette;
 
     SDL_Init(SDL_INIT_EVERYTHING);
     r_init();
@@ -1006,7 +1029,7 @@ int main(int argc, char** argv) {
 
         /* process frame */
 		mu_finalize_events_begin_draw(ctx);
-		editor_window(ctx, &g_editor_state, &g_bottom_line_state, &g_focus_state);
+		viewer_window(ctx, &g_editor_state, &g_bottom_line_state, &g_focus_state);
 		mu_command_palette(ctx, &g_command_palette_state, &g_focus_state);
 		mu_end(ctx);
 
