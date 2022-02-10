@@ -110,7 +110,7 @@ class Atlas:
 
 
 
-def make_atlas(BITMAPS: List[Bitmap], ATLAS_WIDTH: int, BITMAP_WIDTH: int, BITMAP_HEIGHT: int) -> Atlas:
+def make_atlas(BITMAPS: List[Bitmap], ATLAS_WIDTH: int, ATLAS_HEIGHT: int, BITMAP_HEIGHT: int) -> Atlas:
     # vvv HACK! This is because for whatever reason, though 
     # the bitmap width is 32, the grid only contains 4 hex values!!
     # ===
@@ -124,34 +124,48 @@ def make_atlas(BITMAPS: List[Bitmap], ATLAS_WIDTH: int, BITMAP_WIDTH: int, BITMA
     # 00000000
     # 00000000
     # ==
-    assert ATLAS_WIDTH % BITMAP_WIDTH == 0
-    bitmaps_per_x = ATLAS_WIDTH // BITMAP_WIDTH
-    atlas_num_bitmaps_in_y = (len(BITMAPS) + bitmaps_per_x - 1) // bitmaps_per_x
-    ATLAS_HEIGHT = atlas_num_bitmaps_in_y * BITMAP_HEIGHT
+    # assert ATLAS_WIDTH % MAX_BITMAP_WIDTH == 0
+    # bitmaps_per_x = ATLAS_WIDTH // MAX_BITMAP_WIDTH
+    # atlas_num_bitmaps_in_y = (len(BITMAPS) + bitmaps_per_x - 1) // bitmaps_per_x
+    # ATLAS_HEIGHT = atlas_num_bitmaps_in_y * BITMAP_HEIGHT
 
     # atlas[y][x]
-    atlas = [["ATLAS_NONE" for _ in range(ATLAS_WIDTH)] for _ in range(ATLAS_HEIGHT)]
+    # atlas = [["ATLAS_NONE" for _ in range(ATLAS_WIDTH)] for _ in range(ATLAS_HEIGHT)]
+    atlas = [[0 for _ in range(ATLAS_WIDTH)] for _ in range(ATLAS_HEIGHT)]
     bitmap2rect = {}
 
     (x, y) = (0, 0) # for filling in atlas
     for b in BITMAPS:
         # vvv HACK on the width!
-        bitmap2rect[b.name] = Rect(x, y, BITMAP_WIDTH, BITMAP_HEIGHT)
-        assert x + BITMAP_WIDTH <= ATLAS_WIDTH
+        # assert x + MAX_BITMAP_WIDTH <= ATLAS_WIDTH
         assert y + BITMAP_HEIGHT <= ATLAS_HEIGHT
         assert len(b.bitmap) == BITMAP_HEIGHT
+
+        if x + len(b.bitmap[0])*8 >= ATLAS_WIDTH: 
+            x = 0
+            y += BITMAP_HEIGHT
+        assert x + len(b.bitmap[0])*8 < ATLAS_WIDTH
+
+
+        bitmap2rect[b.name] = Rect(x, y, len(b.bitmap[0])*8, BITMAP_HEIGHT)
+
         for dy in range(BITMAP_HEIGHT):
-            assert len(b.bitmap[dy]) == (BITMAP_WIDTH + 8 - 1) // 8
-            for dx in range(BITMAP_WIDTH):
+            assert len(b.bitmap[0]) == (b.width + 8 - 1) // 8
+            assert x + len(b.bitmap[0])*8 <= ATLAS_WIDTH
+            assert len(b.bitmap[0]) == len(b.bitmap[dy])
+
+            for dx in range(len(b.bitmap[0])*8):
                 hexval = int(b.bitmap[dy][dx//8]);
                 bitix = 7 - dx % 8 # endian-ness issues.
                 bitval = bool(hexval & (1 << bitix))
                 out = 255 * int(bitval)
-                atlas[y + dy][x + dx] = str(out)
-        x += BITMAP_WIDTH
-        if x == ATLAS_WIDTH:
-            x = 0
-            y += BITMAP_HEIGHT
+                atlas[y + dy][x + dx] = out;
+        x += len(b.bitmap[0])*8
+        # y += BITMAP_HEIGHT
+
+        # if x == ATLAS_WIDTH:
+        #     x = 0
+        #     y += BITMAP_HEIGHT
     return Atlas(ATLAS_WIDTH, ATLAS_HEIGHT, BITMAPS, bitmap2rect, atlas)
 
 def serialize_atlas(ATLAS: Atlas) -> str:
@@ -233,36 +247,36 @@ def make_all_white_bitmap(w, h):
 
 
 if __name__ == "__main__":
-    # BITMAP_WIDTH = 8
-    # ATLAS_WIDTH = BITMAP_WIDTH
+    # MAX_BITMAP_WIDTH = 8
+    # ATLAS_WIDTH = MAX_BITMAP_WIDTH
     # BITMAP_HEIGHT = 16
     # PATH = argparse("Dina_i400-10.bdf")
 
-    # BITMAP_WIDTH = 8
-    # ATLAS_WIDTH = BITMAP_WIDTH
+    # MAX_BITMAP_WIDTH = 8
+    # ATLAS_WIDTH = MAX_BITMAP_WIDTH
     # BITMAP_HEIGHT = 16
     # PATH = argparse("spleen-8x16.bdf")
 
-    # BITMAP_WIDTH = 8
-    # ATLAS_WIDTH = BITMAP_WIDTH
-    # BITMAP_HEIGHT = 16
-    # PATH = argparse("Dina_r700-10.bdf")
-
-
-    BITMAP_WIDTH = 8
-    ATLAS_WIDTH = BITMAP_WIDTH
+    ATLAS_WIDTH = 32
+    ATLAS_HEIGHT = 4096
     BITMAP_HEIGHT = 16
-    PATH = argparse("unifont-14.0.01.bdf")
+    PATH = argparse("Dina_r700-10.bdf")
+
+
+    # MAX_BITMAP_WIDTH = 8
+    # ATLAS_WIDTH = MAX_BITMAP_WIDTH * 2
+    # BITMAP_HEIGHT = 16
+    # PATH = argparse("unifont-14.0.01.bdf")
 
     assert PATH
     with open(PATH) as f:
         BITMAPS = fileparse(f)
-    for b in BITMAPS:
-        assert b.width == BITMAP_WIDTH, f"{b.name} has unexpected width {b.width}; expected {BITMAP_WIDTH}"
-        assert b.height == BITMAP_HEIGHT, f"{b.name} has unexpected height {b.height}; expected {BITMAP_HEIGHT}"
+    # for b in BITMAPS:
+    #     assert b.width == MAX_BITMAP_WIDTH, f"{b.name} has unexpected width {b.width}; expected {BITMAP_WIDTH}"
+    #     assert b.height == BITMAP_HEIGHT, f"{b.name} has unexpected height {b.height}; expected {BITMAP_HEIGHT}"
     BITMAPS = filter_bitmaps(BITMAPS)
-    BITMAPS.append(make_all_white_bitmap(BITMAP_WIDTH, BITMAP_HEIGHT))
-    ATLAS = make_atlas(BITMAPS, ATLAS_WIDTH, BITMAP_WIDTH, BITMAP_HEIGHT)
+    BITMAPS.append(make_all_white_bitmap(8, BITMAP_HEIGHT))
+    ATLAS = make_atlas(BITMAPS, ATLAS_WIDTH, ATLAS_HEIGHT, BITMAP_HEIGHT)
     OUT = serialize_atlas(ATLAS)
     # with open("../microui/atlas.inl", "w") as f:
     with open("atlas.inl", "w") as f:
