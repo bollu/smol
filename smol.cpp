@@ -309,7 +309,7 @@ void index_add(TrieNode* index, File *f, int ix, int totlen, Loc data) {
 
 TrieNode* index_lookup(TrieNode* index, const char* key, int len) {
 	assert(index);
-	assert(len > 0);
+	assert(len >= 0);
 	if (len == 0) { return index; }
 	const char c = key[0];
 	if (!index->adj.count(c)) { return nullptr; }
