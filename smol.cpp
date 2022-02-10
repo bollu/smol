@@ -448,10 +448,6 @@ static void log_window(mu_Context* ctx) {
 struct ViewerState {
     // at file focus
     Loc focus;
-    // cursor
-    Loc cursor;
-    // top line that is to be rendered.
-    int render_begin_line;
 };
 
 struct BottomlineState {
@@ -476,6 +472,7 @@ mu_Id editor_state_mu_id(mu_Context *ctx, ViewerState* view) {
  return mu_get_id(ctx, &view, sizeof(view));
 }
 
+/*
 void editor_state_move_left(ViewerState& s) {
     s.cursor.col = std::max<int>(s.cursor.col - 1, 0);
 }
@@ -497,6 +494,7 @@ void editor_state_move_up(ViewerState& s) {
 void editor_state_move_down(ViewerState& s) {
     s.cursor = s.cursor.down();
 }
+*/
 
 void mu_draw_cursor(mu_Context* ctx, mu_Rect* r) {
 	mu_Rect cursor = *r;
@@ -541,7 +539,7 @@ void mu_command_palette(mu_Context* ctx, ViewerState *view, CommandPaletteState*
             }
 
             if (pal->selected_ix < pal->matches.size()) {
-                view->focus = view->cursor = pal->matches[pal->selected_ix];
+                view->focus = pal->matches[pal->selected_ix];
             }
 
         }
@@ -554,24 +552,20 @@ void mu_command_palette(mu_Context* ctx, ViewerState *view, CommandPaletteState*
         mu_Rect r = mu_layout_next(ctx);
         // mu_draw_text(ctx, font, "Command Palette", strlen("Command Palette"), mu_vec2(r.x, r.y), ctx->style->colors[MU_COLOR_TEXT]);
         // mu_draw_text(ctx, font, state->input.c_str(), state->input.size(), mu_vec2(0, 20), ctx->style->colors[MU_COLOR_TEXT]);
-        const mu_Color QUERY_COLOR = { .r = 187, .g = 222, .b = 251, .a = 255 };
-        mu_draw_text(ctx, font, pal->input .c_str(), pal->input.size(), mu_vec2(r.x, r.y), QUERY_COLOR);
+        const mu_Color BLUE_COLOR = { .r = 187, .g = 222, .b = 251, .a = 255 };
+        mu_draw_text(ctx, font, pal->input .c_str(), pal->input.size(), mu_vec2(r.x, r.y), BLUE_COLOR);
         r.x += r_get_text_width(pal->input.c_str(), pal->input.size());
         if (focused) {
-			mu_draw_text(ctx, font, "|", 1, mu_vec2(r.x, r.y), QUERY_COLOR);
+			mu_draw_text(ctx, font, "|", 1, mu_vec2(r.x, r.y), BLUE_COLOR);
 
         }
 
 
 
         static const int NUM_ANSWERS = 80;
-		for (int i = 0; i < pal->matches.size() && i < NUM_ANSWERS; ++i) {
+        static const int TOP_OFFSET = 3;
+		for (int i = std::max<int>(0, pal->selected_ix - TOP_OFFSET); i < pal->matches.size() && i < NUM_ANSWERS; ++i) {
 			const Loc l = pal->matches[i];
-            std::string out;
-
-            out += l.file->path;
-			out += ":";
-
 			int ix_line_end = l.ix;
 			while (ix_line_end < l.file->len && !is_newline(l.file->buf[ix_line_end])) {
 				ix_line_end++;
@@ -582,43 +576,53 @@ void mu_command_palette(mu_Context* ctx, ViewerState *view, CommandPaletteState*
 				ix_line_begin--;
 			}
 
-			for (int k = ix_line_begin; k < ix_line_end; ++k) {
-				out += l.file->buf[k];
-			}
-
 			mu_Rect r = mu_layout_next(ctx);
 
             const bool SELECTED = focused && (i == pal->selected_ix);
-			const mu_Color SELECTION_COLOR = { .r = 255, .g = 255, .b = 255, .a = 255 };
+			const mu_Color WHITE_COLOR = { .r = 255, .g = 255, .b = 255, .a = 255 };
+			const mu_Color GRAY_COLOR = { .r = 100, .g = 100, .b = 100, .a = 255 };
             const char selection = SELECTED ? '>' : ' ';
-			mu_draw_text(ctx, font, &selection, 1, mu_vec2(r.x, r.y), SELECTION_COLOR);
+			mu_draw_text(ctx, font, &selection, 1, mu_vec2(r.x, r.y), WHITE_COLOR);
             r.x += r_get_text_width(&selection, 1);
 
-			const mu_Color PATH_COLOR = { .r = 100, .g = 100, .b = 100, .a = 255 };
+            std::string istr = std::to_string(i + 1); // TODO: right-pad.
+            istr += ".";
+			mu_draw_text(ctx, font, istr.c_str(), istr.size(), mu_vec2(r.x, r.y), 
+                SELECTED ? WHITE_COLOR : GRAY_COLOR);
+            r.x += r_get_text_width(istr.c_str(), istr.size());
+
 			mu_draw_text(ctx, font, l.file->path.c_str(), l.file->path.size(), mu_vec2(r.x, r.y), 
-                SELECTED ? SELECTION_COLOR : PATH_COLOR);
+                SELECTED ? WHITE_COLOR : GRAY_COLOR);
 			r.x += r_get_text_width(l.file->path.c_str(), l.file->path.size());
 
-			mu_draw_text(ctx, font, ":", 1, mu_vec2(r.x, r.y), PATH_COLOR);
+
+			mu_draw_text(ctx, font, ":", 1, mu_vec2(r.x, r.y), GRAY_COLOR);
 			r.x += r_get_text_width(":", 1);
 
 
-			const mu_Color CODE_NO_HIGHLIGHT_COLOR = { .r = 180, .g = 180, .b = 180, .a = 255 };
+            std::string linenostr = std::to_string(l.line + 1);
+			mu_draw_text(ctx, font, linenostr.c_str(), linenostr.size(), mu_vec2(r.x, r.y), GRAY_COLOR);
+			r.x += r_get_text_width(linenostr.c_str(), linenostr.size());
+
+			mu_draw_text(ctx, font, " ", 1, mu_vec2(r.x, r.y), GRAY_COLOR);
+			r.x += r_get_text_width(" ", 1);
+
+
 			// [ix_line_begin, ix)
 			mu_draw_text(ctx, font, l.file->buf + ix_line_begin, l.ix - ix_line_begin, mu_vec2(r.x, r.y), 
-                SELECTED ? SELECTION_COLOR : CODE_NO_HIGHLIGHT_COLOR);
+                SELECTED ? WHITE_COLOR : GRAY_COLOR);
 			r.x += r_get_text_width(l.file->buf + ix_line_begin, l.ix - ix_line_begin);
 
 			// [ix, ix_str_end)
 			const int ix_str_end = l.ix + pal->input.size();
-			const mu_Color CODE_WITH_HIGHLIGHT_COLOR = QUERY_COLOR;
-			mu_draw_text(ctx, font, l.file->buf + l.ix, ix_str_end - l.ix, mu_vec2(r.x, r.y), CODE_WITH_HIGHLIGHT_COLOR);
+            mu_draw_text(ctx, font, l.file->buf + l.ix, ix_str_end - l.ix, mu_vec2(r.x, r.y),
+                BLUE_COLOR);
 			r.x += r_get_text_width(l.file->buf + l.ix, ix_str_end - l.ix);
 
 
 			// [ix+search str, ix end)
 			mu_draw_text(ctx, font, l.file->buf + ix_str_end, ix_line_end - ix_str_end, mu_vec2(r.x, r.y), 
-                SELECTED ? SELECTION_COLOR : CODE_NO_HIGHLIGHT_COLOR);
+                SELECTED ? WHITE_COLOR : GRAY_COLOR);
 			r.x += r_get_text_width(l.file->buf + ix_str_end, ix_line_end - ix_str_end);
 
 		} // end i
@@ -636,18 +640,15 @@ void mu_bottom_line(mu_Context* ctx, BottomlineState* s) {
 
 
 
-void mu_viewer(mu_Context* ctx, ViewerState *view, FocusState *focus) {
+void mu_viewer(mu_Context* ctx, ViewerState *view, FocusState *focus, const CommandPaletteState *pal) {
 
-    if (view->cursor.ix == -1) {
-        assert(view->focus.ix == -1);
+    if (view->focus.ix == -1) {
         return;
     }
-    assert(view->cursor.ix != -1);
     assert(view->focus.ix != -1);
 
     int width = -1;
     mu_Font font = ctx->style->font;
-    mu_Color color = ctx->style->colors[MU_COLOR_TEXT];
 
     mu_Id id = editor_state_mu_id(ctx, view); 
     mu_Container* cnt = mu_get_current_container(ctx);
@@ -658,6 +659,7 @@ void mu_viewer(mu_Context* ctx, ViewerState *view, FocusState *focus) {
     const bool focused = *focus == FocusState::FSK_Viewer;
 	if (focused) {
 
+        /*
         if (ctx->key_pressed & MU_KEY_UPARROW) {
             editor_state_move_up(*view);
         }
@@ -673,6 +675,7 @@ void mu_viewer(mu_Context* ctx, ViewerState *view, FocusState *focus) {
         if (ctx->key_pressed & MU_KEY_RIGHTARROW) {
             editor_state_move_right(*view);
         }
+        */
 
 		if (ctx->key_pressed & MU_KEY_TAB) {
             *focus = FocusState::FSK_Palette;
@@ -685,29 +688,40 @@ void mu_viewer(mu_Context* ctx, ViewerState *view, FocusState *focus) {
     mu_layout_row(ctx, 1, &width, ctx->text_height(font));
 	// mu_draw_control_frame(ctx, id, cnt->body, MU_COLOR_BASE, 0);
 
-    const int START_LINES_UP = 50;
-    const int NLINES = 100;
-    Loc left = view->cursor;
+    const int START_LINES_UP = 3;
+    const int NLINES = 40;
+    Loc left = view->focus;
     for (int i = 0; i < START_LINES_UP; ++i) { left = left.up(); }
     left = left.start_of_cur_line();
+    assert(left.line == 0 || view->focus.line - left.line == START_LINES_UP);
 
-    for (int l = 0; l < NLINES; ++l) {
+	const mu_Color GRAY_COLOR = { .r = 180, .g = 180, .b = 180, .a = 255 };
+	const mu_Color WHITE_COLOR = { .r = 255, .g = 255, .b = 255, .a = 255 };
+	const mu_Color BLUE_COLOR = { .r = 187, .g = 222, .b = 251, .a = 255 };
+
+    for (int line_offset = 0; line_offset < NLINES; ++line_offset) {
         mu_Rect r = mu_layout_next(ctx);
 
         // have exhausted text.
         if (left.eof()) { break; }
 
+
+        const bool SELECTED = view->focus.line == left.line;
+
         // 1. draw line number
         char lineno_str[12];
-        itoa(l, lineno_str, 10);
+        itoa(left.line, lineno_str, 10);
         const int total_len = 5;
         const int num_len = strlen(lineno_str);
+        assert(num_len < total_len);
         for (int i = num_len; i < total_len; ++i) {
             lineno_str[i] = ' ';
         }
         lineno_str[total_len] = 0;
         lineno_str[total_len + 1] = 0;
-        mu_draw_text(ctx, font, lineno_str, strlen(lineno_str), mu_vec2(r.x, r.y), color);
+
+        mu_draw_text(ctx, font, lineno_str, strlen(lineno_str), mu_vec2(r.x, r.y), 
+           SELECTED ? WHITE_COLOR : GRAY_COLOR);
         r.x += ctx->text_width(font, lineno_str, strlen(lineno_str));
 
         // line number width
@@ -717,26 +731,34 @@ void mu_viewer(mu_Context* ctx, ViewerState *view, FocusState *focus) {
         assert(right.line == left.line);
         assert(right.eof() || is_newline(right.get()));
 
+
         r.h = ctx->text_height(font);
         // draw text.
         for (Loc cur = left; cur.ix < right.ix; cur = cur.advance()) {
 			if (focused && 
-                view->cursor.line == cur.line && 
-                view->cursor.col == cur.col) {
+                view->focus.line == cur.line && 
+                view->focus.col == cur.col) {
 				mu_draw_cursor(ctx, &r);
 			}
 
+            // the character is inside the query bounds.
+            bool AT_QUERY = 
+              pal->selected_ix < pal->matches.size() &&
+                cur.ix >= pal->matches[pal->selected_ix].ix &&
+                cur.ix < pal->matches[pal->selected_ix].ix + pal->input.size();
             const char c = cur.get();
-            mu_draw_text(ctx, font, &c, 1, mu_vec2(r.x, r.y), color);
+            mu_draw_text(ctx, font, &c, 1, mu_vec2(r.x, r.y), 
+              AT_QUERY ? BLUE_COLOR : SELECTED ? WHITE_COLOR : GRAY_COLOR);
             r.x += ctx->text_width(font, &c, 1);
 		}
 
         // cursor
-        if (view->cursor.line == l && view->cursor.col == right.col) {
+        if (view->focus.line == line_offset && view->focus.col == right.col) {
             mu_draw_cursor(ctx, &r);
         }
 
         // next line;
+        assert(right.advance().eof() || left.line + 1 == right.advance().line);
         left = right.advance();
     }
 
@@ -744,7 +766,7 @@ void mu_viewer(mu_Context* ctx, ViewerState *view, FocusState *focus) {
 }
 
 
-static void viewer_window(mu_Context* ctx, ViewerState *ed, BottomlineState *bot, FocusState *focus) {
+static void viewer_window(mu_Context* ctx, ViewerState *ed, BottomlineState *bot, FocusState *focus, const CommandPaletteState *pal) {
     const int window_opts =  MU_OPT_NOTITLE | MU_OPT_NOCLOSE | MU_OPT_NORESIZE;
     // if (mu_begin_window_ex(ctx, "Editor", mu_rect(0, 0, 1400, 768), window_opts)) {
     if (mu_begin_window(ctx, "Editor", mu_rect(0, 720/2, 1400, 720/2))) { 
@@ -752,7 +774,7 @@ static void viewer_window(mu_Context* ctx, ViewerState *ed, BottomlineState *bot
         mu_layout_row(ctx, 1, width_row, -25);
         mu_layout_row(ctx, 1, width_row, -1);
         mu_set_focus(ctx, editor_state_mu_id(ctx, ed));
-        mu_viewer(ctx, ed, focus);
+        mu_viewer(ctx, ed, focus, pal);
 		mu_bottom_line(ctx, bot);
         mu_end_window(ctx);
     }
@@ -1059,7 +1081,7 @@ int main(int argc, char** argv) {
 
         /* process frame */
 		mu_finalize_events_begin_draw(ctx);
-		viewer_window(ctx, &g_viewer_state, &g_bottom_line_state, &g_focus_state);
+		viewer_window(ctx, &g_viewer_state, &g_bottom_line_state, &g_focus_state, &g_command_palette_state);
 		mu_command_palette(ctx, &g_viewer_state, &g_command_palette_state, &g_focus_state);
 		mu_end(ctx);
 
