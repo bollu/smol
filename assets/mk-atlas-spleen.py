@@ -135,16 +135,17 @@ def make_atlas(BITMAPS: List[Bitmap], ATLAS_WIDTH: int, ATLAS_HEIGHT: int, BITMA
     bitmap2rect = {}
 
     (x, y) = (0, 0) # for filling in atlas
-    for b in BITMAPS:
+    for (count, b) in enumerate(BITMAPS):
+        print("writing bitmap %s/%s" % (count, len(BITMAPS)), file=sys.stderr)
         # vvv HACK on the width!
         # assert x + MAX_BITMAP_WIDTH <= ATLAS_WIDTH
-        assert y + BITMAP_HEIGHT <= ATLAS_HEIGHT
         assert len(b.bitmap) == BITMAP_HEIGHT
 
         if x + len(b.bitmap[0])*8 >= ATLAS_WIDTH: 
             x = 0
             y += BITMAP_HEIGHT
         assert x + len(b.bitmap[0])*8 < ATLAS_WIDTH
+        assert y + BITMAP_HEIGHT <= ATLAS_HEIGHT
 
 
         bitmap2rect[b.name] = Rect(x, y, len(b.bitmap[0])*8, BITMAP_HEIGHT)
@@ -181,14 +182,15 @@ def serialize_atlas(ATLAS: Atlas) -> str:
     # static unsigned char atlas_texture[ATLAS_WIDTH * ATLAS_HEIGHT] = {
     # 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     # 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    first_write = True
 
+    print("serializing texture data...", file=sys.stderr)
     texture_data = ["ATLAS_TEXTURE_NONE" for _ in range(ATLAS.width * ATLAS.height)]
     for y in range(ATLAS.height):
         for x in range(ATLAS.width):
             texture_data[x + y * (ATLAS.width)] = ATLAS.atlas[y][x]
 
 
+    print("writing texture data...", file=sys.stderr)
     out += "static unsigned char atlas_texture[] = {\n";
     for i in range(ATLAS.width * ATLAS.height):
         out += str(texture_data[i]) +  ", "
@@ -202,12 +204,13 @@ def serialize_atlas(ATLAS: Atlas) -> str:
     #   [ MU_ICON_COLLAPSED ] = { 113, 68, 5, 7 },
     #   [ ATLAS_WHITE ] = { 125, 68, 3, 3 },
     #   [ ATLAS_FONT+32 ] = { 84, 68, 2, 17 },
+    print("writing atlas index data...", file=sys.stderr)
     out += "\n";
     out += "static mu_Rect atlas[] = {\n";
     for b in ATLAS.bitmaps:
         r = ATLAS.bitmap2rect[b.name]
-        if b.encoding >= 32 and b.encoding <= 126:
-            out += "  [ATLAS_FONT + %s] = { %s, %s, %s, %s},\n" % (b.encoding, r.x, r.y, r.w, r.h)
+        # if b.encoding >= 32 and b.encoding <= 126:
+        out += "  [ATLAS_FONT + %s] = { %s, %s, %s, %s},\n" % (b.encoding, r.x, r.y, r.w, r.h)
 
         if b.encoding == ord('x'):
             out += "  [MU_ICON_CLOSE] = { %s, %s, %s, %s },\n" % (r.x, r.y, r.w, r.h)
@@ -233,9 +236,54 @@ def serialize_atlas(ATLAS: Atlas) -> str:
 def filter_bitmaps(BITMAPS: List[Bitmap]) -> List[Bitmap]:
     """only keep bitmaps that are useful"""
     out = []
+    # https://en.wikipedia.org/wiki/Mathematical_operators_and_symbols_in_Unicode
     for b in BITMAPS:
         if b.encoding >= 32 and b.encoding <= 256:
             out.append(b)
+        # Mathematical Operators block
+        if b.encoding >= 0x2200 and b.encoding <= 0x22FF:
+            out.append(b)
+        # Supplemental Mathematical Operators block
+        if b.encoding >= 0x2A00 and b.encoding <= 0x2AFF:
+            out.append(b)
+        # Mathematical alphanumeric symbols
+        if b.encoding >= 0x1D400 and b.encoding <= 0x1D7FF:
+            out.append(b)
+        # Letterlike
+        if b.encoding >= 0x2100 and b.encoding <= 0x214F:
+            out.append(b)
+        # Misc. A
+        if b.encoding >= 0x27C0 and b.encoding <= 0x27EF:
+            out.append(b)
+        # Misc. B
+        if b.encoding >= 0x2980 and b.encoding <= 0x29FF:
+            out.append(b)
+        # Misc. Tech
+        if b.encoding >= 0x2300 and b.encoding <= 0x23FF:
+            out.append(b)
+        # Geometric shapes
+        if b.encoding >= 0x25A0 and b.encoding <= 0x25FF:
+            out.append(b)
+        # Misc. Symbols and arrows
+        if b.encoding >= 0x2B00 and b.encoding <= 0x2BFF:
+            out.append(b)
+        # Arrows
+        if b.encoding >= 0x2190 and b.encoding <= 0x21FF:
+            out.append(b)
+        # supplemental arrows: A block
+        if b.encoding >= 0x27F0 and b.encoding <= 0x27FF:
+            out.append(b)
+        # supplemental arrows: B block
+        if b.encoding >= 0x2900 and b.encoding <= 0x297F:
+            out.append(b)
+        # combining diacritical marks
+        if b.encoding >= 0x20D0 and b.encoding <= 0x20DC:
+            out.append(b)
+        # combining diacritical marks
+        if b.encoding == 0x20E1: out.append(b)
+        if b.encoding == 0x20E5 and b.encoding <= 0x20E6: out.append(b)
+        if b.encoding == 0x20EB and b.encoding <= 0x20EF: out.append(b)
+        # Arabic math symbols (not included).
     return out
 
 
@@ -257,24 +305,27 @@ if __name__ == "__main__":
     # BITMAP_HEIGHT = 16
     # PATH = argparse("spleen-8x16.bdf")
 
-    ATLAS_WIDTH = 32
-    ATLAS_HEIGHT = 4096
-    BITMAP_HEIGHT = 16
-    PATH = argparse("Dina_r700-10.bdf")
-
-
-    # MAX_BITMAP_WIDTH = 8
-    # ATLAS_WIDTH = MAX_BITMAP_WIDTH * 2
+    # ATLAS_WIDTH = 32
+    # ATLAS_HEIGHT = 4096
     # BITMAP_HEIGHT = 16
-    # PATH = argparse("unifont-14.0.01.bdf")
+    # PATH = argparse("Dina_r700-10.bdf")
+
+
+    ATLAS_WIDTH = (1 << 10)
+    ATLAS_HEIGHT = (1 << 9)
+    BITMAP_HEIGHT = 16
+    PATH = argparse("unifont-14.0.01.bdf")
 
     assert PATH
+    print("parsing bitmaps...", file=sys.stderr)
     with open(PATH) as f:
         BITMAPS = fileparse(f)
     # for b in BITMAPS:
     #     assert b.width == MAX_BITMAP_WIDTH, f"{b.name} has unexpected width {b.width}; expected {BITMAP_WIDTH}"
     #     assert b.height == BITMAP_HEIGHT, f"{b.name} has unexpected height {b.height}; expected {BITMAP_HEIGHT}"
+    print("filtering bitmaps..", file=sys.stderr)
     BITMAPS = filter_bitmaps(BITMAPS)
+    print("num bitmaps: %s" % len(BITMAPS), file=sys.stderr) 
     BITMAPS.append(make_all_white_bitmap(8, BITMAP_HEIGHT))
     ATLAS = make_atlas(BITMAPS, ATLAS_WIDTH, ATLAS_HEIGHT, BITMAP_HEIGHT)
     OUT = serialize_atlas(ATLAS)
