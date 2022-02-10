@@ -1,4 +1,5 @@
-﻿#include <SDL.h>
+﻿// TODO: the art of multiprocessor programming.
+#include <SDL.h>
 #define main main
 #include <unordered_map>
 #include <map>
@@ -47,7 +48,7 @@ bool is_whitespace(char c) {
 
 struct Loc {
     File* file = nullptr;
-    int ix = -1; 
+    int ix = -1;  // Loc points at file->buf[ix]
     int line = -1;
     int col = -1;
 
@@ -55,15 +56,26 @@ struct Loc {
     // TODO: don't store the string.
     Loc(File *file, int ix, int line, int col) : file(file), ix(ix), line(line), col(col) {};
 
+    bool operator == (const Loc &other) const {
+        assert(other.file == this->file);
+        bool eq =  this->ix == other.ix;
+        if (eq) {
+            assert(this->line == other.line);
+            assert(this->col == other.col);
+        }
+        return eq;
+
+    }
     bool valid() const {
         assert(file != nullptr);
         assert(ix >= 0);
         assert(line >= 0);
         assert(col >= 0);
         assert(ix <= file->len);
-        assert(ix - col >= 0);
         // vv invariant for `col`.
-        assert(ix - col == 0 || is_newline(file->buf[ix - col]));
+        // this seems to suggest that file->buf[-1] = '\n', lmao.
+        assert(ix >= col);
+        assert(ix - col == 0 || is_newline(file->buf[ix - col - 1]));
         assert(line >= 0);
         // expensive invariant: # of newlines (\n)s upto ix equal line.
         return true;
@@ -80,48 +92,62 @@ struct Loc {
     }
 
     Loc advance() const {
+        assert(valid());
         assert(!eof());
+
         if (file->buf[this->ix] == '\r') {
             assert(ix + 1 < file->len);
             assert(file->buf[this->ix + 1] == '\n');
-            return Loc(file, ix + 2, line + 1, 1);
+            return Loc(file, ix + 2, line + 1, 0);
         }
         else if (file->buf[this->ix] == '\n') {
-            return Loc(file, ix + 1, line + 1, 1);
+            return Loc(file, ix + 1, line + 1, 0);
         }
         else {
             return Loc(file, ix + 1, line, col + 1);
         }
     }
 
-	Loc retreat() const {
+    // vv NOTE: retreat() checks its correctness in terms of advance()
+    // because advance() is the much simpler primitive.
+    Loc retreat() const {
         assert(valid());
-        Loc l = *this;
-		assert(l.valid());
-		if (l.ix == 0) { return l; }
-		l.ix--;
-		if (l.get() == '\n') {
-			if (l.ix > 0 && l.file->buf[l.ix - 1] == '\n') {
-				l.ix--;
-			}
-			l.line--;
-		}
+		Loc l = *this;
+        if (l.ix == 0) { return l;  }
 
-		l.col = 0;
-		while (l.ix - l.col > 0 && !is_newline(l.file->buf[l.ix - l.col])) {
-			l.col++;
-		}
+        // we need to move up a line
+        if (l.col == 0) {
+            const char c = l.file->buf[l.ix - 1];
+            const char b = (l.ix - 2 >= 0) ? l.file->buf[l.ix - 2] : 0;
+            assert(c == '\n');
+            l.ix -= (b == '\r') ? 2 : 1;
+            l.line -= 1;
 
-		// damn, that's a neat invariant of col.
-		assert(l.ix - l.col == 0 || is_newline(l.file->buf[l.ix - l.col]));
-		return l;
-	}
+            // we now need to fnd our new column.
+            // col tells us how far back you need to go, to find a newline.
+            l.col = 0;
+            while (l.ix - l.col > 0 && !is_newline(l.file->buf[l.ix - l.col - 1])) {
+                l.col++;
+            }
+
+            assert(l.advance() == *this);
+			assert(l.valid());
+            return l;
+        }
+        else {
+            l.ix -= 1; l.col -= 1;
+            assert(l.advance() == *this);
+			assert(l.valid());
+            return l;
+        }
+    }
 
 
     Loc start_of_cur_line() const {
         assert(valid());
         Loc l = *this;
         l.ix -= col; l.col = 0;
+        assert(l.valid());
         return l;
     }
 
@@ -129,6 +155,7 @@ struct Loc {
         assert(valid());
         Loc l = *this;
         while (!l.eof() && this->line == l.line) { l = l.advance();  }
+        assert(l.valid());
         return l;
     }
 
@@ -136,6 +163,7 @@ struct Loc {
         assert(valid());
         Loc l = *this;
         while (!l.eof() && !is_newline(l.get())) { l = l.advance();  }
+        assert(l.valid());
         return l;
     }
 
@@ -167,6 +195,7 @@ struct Loc {
         }
         assert(l.line == this->line - 1);
         assert(l.col <= this->col);
+        assert(l.valid());
         return l;
     }
 
@@ -199,6 +228,7 @@ struct Loc {
         return l;
         assert(l.line == this->line + 1);
         assert(l.col <= this->col);
+        assert(l.valid());
     }
 
 };
@@ -478,17 +508,12 @@ void mu_draw_cursor(mu_Context* ctx, mu_Rect* r) {
 
 
 
-void mu_command_palette(mu_Context* ctx, CommandPaletteState* pal, FocusState *focus) {
+void mu_command_palette(mu_Context* ctx, ViewerState *view, CommandPaletteState* pal, FocusState *focus) {
 	assert(pal->selected_ix <= (int)pal->matches.size());
 
     const bool focused = *focus == FocusState::FSK_Palette;
     if (mu_begin_window(ctx, "CMD", mu_Rect(0, 0, 1400, 720/2))) {
         if (focused) {
-            // TODO: Debounce
-            if (ctx->key_pressed & MU_KEY_TAB) {
-                *focus = FocusState::FSK_Palette;
-            }
-
             if (ctx->key_pressed & MU_KEY_BACKSPACE) {
                 pal->sequence_number++;
                 pal->input.resize(std::max<int>(0, pal->input.size() - 1));
@@ -514,6 +539,11 @@ void mu_command_palette(mu_Context* ctx, CommandPaletteState* pal, FocusState *f
                 pal->matches = {};
                 pal->selected_ix = 0;
             }
+
+            if (pal->selected_ix < pal->matches.size()) {
+                view->focus = view->cursor = pal->matches[pal->selected_ix];
+            }
+
         }
 
         mu_Font font = ctx->style->font;
@@ -976,7 +1006,7 @@ int main(int argc, char** argv) {
     g_bottom_line_state.info = "WELCOME";
 
     CommandPaletteState g_command_palette_state;
-    ViewerState g_editor_state;
+    ViewerState g_viewer_state;
 
     FocusState g_focus_state = FocusState::FSK_Palette;
 
@@ -1029,8 +1059,8 @@ int main(int argc, char** argv) {
 
         /* process frame */
 		mu_finalize_events_begin_draw(ctx);
-		viewer_window(ctx, &g_editor_state, &g_bottom_line_state, &g_focus_state);
-		mu_command_palette(ctx, &g_command_palette_state, &g_focus_state);
+		viewer_window(ctx, &g_viewer_state, &g_bottom_line_state, &g_focus_state);
+		mu_command_palette(ctx, &g_viewer_state, &g_command_palette_state, &g_focus_state);
 		mu_end(ctx);
 
         /* render */
