@@ -143,11 +143,11 @@ def make_atlas(BITMAPS: List[Bitmap], ATLAS_WIDTH: int, BITMAP_WIDTH: int, BITMA
         for dy in range(BITMAP_HEIGHT):
             assert len(b.bitmap[dy]) == (BITMAP_WIDTH + 8 - 1) // 8
             for dx in range(BITMAP_WIDTH):
-                hexval = b.bitmap[dy][dx//8];
+                hexval = int(b.bitmap[dy][dx//8]);
                 bitix = 7 - dx % 8 # endian-ness issues.
                 bitval = bool(hexval & (1 << bitix))
                 out = 255 * int(bitval)
-                atlas[y + dy][x + dx] = out
+                atlas[y + dy][x + dx] = str(out)
         x += BITMAP_WIDTH
         if x == ATLAS_WIDTH:
             x = 0
@@ -243,11 +243,16 @@ if __name__ == "__main__":
     # BITMAP_HEIGHT = 16
     # PATH = argparse("spleen-8x16.bdf")
 
+    # BITMAP_WIDTH = 8
+    # ATLAS_WIDTH = BITMAP_WIDTH
+    # BITMAP_HEIGHT = 16
+    # PATH = argparse("Dina_r700-10.bdf")
+
+
     BITMAP_WIDTH = 8
     ATLAS_WIDTH = BITMAP_WIDTH
     BITMAP_HEIGHT = 16
-    PATH = argparse("Dina_r700-10.bdf")
-
+    PATH = argparse("unifont-14.0.01.bdf")
 
     assert PATH
     with open(PATH) as f:
