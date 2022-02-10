@@ -236,18 +236,27 @@ struct Loc {
 
 struct TrieNode;
 struct TrieEdge {
+    static int NUM_TRIE_EDGES;
     File* f = nullptr;
     int ix = -1;
     int len = 0;
     TrieNode* node = nullptr;
-    TrieEdge() {}
-    TrieEdge(File *f, int ix, int len, TrieNode* node) : f(f), ix(ix), len(len), node(node) {};
+    TrieEdge() { NUM_TRIE_EDGES++; }
+    TrieEdge(File* f, int ix, int len, TrieNode* node) : f(f), ix(ix), len(len), node(node) { NUM_TRIE_EDGES++; };
 };
 
+int TrieEdge::NUM_TRIE_EDGES = 0;
+
 struct TrieNode {
+    static int NUM_TRIE_NODES;
     std::unordered_map<int, TrieEdge> adj;
     std::vector<Loc> data;
+    TrieNode() {
+        NUM_TRIE_NODES++;
+    }
 };
+
+int TrieNode::NUM_TRIE_NODES = 0;
 
 void index_add(TrieNode* index, File *f, int ix, int totlen, Loc data) {
     assert(f);
@@ -307,14 +316,16 @@ void index_add(TrieNode* index, File *f, int ix, int totlen, Loc data) {
 	return;
 };
 
-TrieNode* index_lookup(TrieNode* index, const char* key, int len) {
+const TrieNode* index_lookup(const TrieNode* index, const char* key, int len) {
 	assert(index);
 	assert(len >= 0);
 	if (len == 0) { return index; }
 	const char c = key[0];
+    auto it = index->adj.find(c);
+    if (it == index->adj.end()) { return nullptr;  }
 	if (!index->adj.count(c)) { return nullptr; }
 
-	const TrieEdge e = index->adj[c];
+    const TrieEdge e = it->second;
 	int i = 0;
 	const char* estr = e.f->buf + e.ix;
 	while (i < e.len &&
@@ -929,19 +940,22 @@ struct TaskManager {
     int query_sequence_number;
 
     // pairs of trie nodes, and how much of the query length they match.
-    std::stack<TrieNode*> query_walk_stack;
+    std::stack<const TrieNode*> query_walk_stack;
 };
 
 
 void task_manager_explore_directory_timeslice(TaskManager *s, BottomlineState *bot) {
 	assert(s->indexing);
     if (s->ix_it == std::filesystem::end(s->ix_it)) {
+        bot->info = "DONE indexing;";
+        bot->info += "#nodes: " + std::to_string(TrieNode::NUM_TRIE_NODES);
+        bot->info += " #edges: " + std::to_string(TrieEdge::NUM_TRIE_EDGES);
         s->indexing = false;
         return;
     };
 
-    std::filesystem::path curp = *s->ix_it;
-    s->ix_it++;
+    const std::filesystem::path curp = *s->ix_it;
+    s->ix_it++; // next file.
 	bot->info = "walking: " + curp.string();
     if (!std::filesystem::is_regular_file(curp)) {
         return;
@@ -1021,13 +1035,13 @@ void task_manager_query_timeslice(TaskManager* s, CommandPaletteState *pal, Trie
     assert(s->query_sequence_number <= pal->sequence_number);
     if (s->query_sequence_number < pal->sequence_number) {
         s->query_sequence_number = pal->sequence_number;
-        s->query_walk_stack = std::stack<TrieNode* >();
+        s->query_walk_stack = std::stack<const TrieNode* >();
 
         if (pal->input.size() == 0) { 
             return;
         }
 
-        TrieNode* cur = index_lookup(g_index, pal->input.c_str(), pal->input.size());
+        const TrieNode* cur = index_lookup(g_index, pal->input.c_str(), pal->input.size());
         if (!cur) {
             return;
         }
@@ -1039,7 +1053,7 @@ void task_manager_query_timeslice(TaskManager* s, CommandPaletteState *pal, Trie
         return;
     }
 
-    TrieNode* top = s->query_walk_stack.top();
+    const TrieNode* top = s->query_walk_stack.top();
     s->query_walk_stack.pop();
     pal->matches.insert(pal->matches.end(), top->data.begin(), top->data.end());
     for (auto it : top->adj) {
