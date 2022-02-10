@@ -57,7 +57,8 @@ struct Loc {
     Loc(File *file, int ix, int line, int col) : file(file), ix(ix), line(line), col(col) {};
 
     bool operator == (const Loc &other) const {
-        assert(other.file == this->file);
+        // assert(other.file == this->file);
+        if (other.file != this->file) { return false;  }
         bool eq =  this->ix == other.ix;
         if (eq) {
             assert(this->line == other.line);
@@ -93,7 +94,7 @@ struct Loc {
 
     Loc advance() const {
         assert(valid());
-        assert(!eof());
+        if (eof()) { return *this; }
 
         if (file->buf[this->ix] == '\r') {
             assert(ix + 1 < file->len);
@@ -170,31 +171,8 @@ struct Loc {
     Loc up() const {
         assert(valid());
         Loc l = *this;
-        while (l.ix > 0) {
-            l = l.retreat();
-            if (l.line < this->line) {
-                break;
-            }
-        }
-        if (l.ix == 0) { return l;  }
-        // l is now in a line before where we started.
-        assert(l.line == this->line - 1);
-
-        // l is at the rightmost position of the previous line.
-        // Thus, to align cursors, we must pull the column
-        // back towards us.
-        // It may be the case that the line before us simply
-        // does not have enough characters, which is why we do 
-        // not loop for [l.col == this.col]. example:
-        // b|     [l]
-        // aaaa|  [this]
-        while (l.col > this->col) {
-            Loc lnext = l.retreat();
-            if (lnext.line != l.line) { break;  }
-            else { l = lnext;  }
-        }
-        assert(l.line == this->line - 1);
-        assert(l.col <= this->col);
+        l = this->start_of_cur_line();
+        l = l.retreat();
         assert(l.valid());
         return l;
     }
@@ -202,33 +180,10 @@ struct Loc {
     // TODO: ask @codelegend for refactoring.
     Loc down() const {
         assert(valid());
-        Loc l = *this;
-        while (!l.eof()) {
-            l = l.advance();
-            if (l.line > this->line) {
-                break;
-            }
-        }
-        if (l.eof()) { return l; }
-        // l is now in a line before where we started.
-        assert(l.line == this->line + 1);
-
-        // note that l is at the beginning of the next
-        // line. Thus, we must push l forward to align with us.
-        // we must take care to not skip into the next line accidentally.
-        // It may be that the next line does not have enough characters.
-        // So we check that we don't run over to the next line.
-        // aaaa|  [this]
-        // b|     [l]
-        while (l.col < this->col) {
-            Loc lnext = l.advance();
-            if (lnext.line != l.line) { break;  }
-            else { l = lnext;  }
-        }
-        return l;
-        assert(l.line == this->line + 1);
-        assert(l.col <= this->col);
+        Loc l = this->end_of_cur_line();
+        l = l.advance();
         assert(l.valid());
+        return l;
     }
 
 };
@@ -346,10 +301,20 @@ const TrieNode* index_lookup(const TrieNode* index, const char* key, int len) {
 	return index_lookup(e.node, key, len);
 }
 
+
+
+
 // TODO: rename to viewer.
 struct ViewerState {
+    void set_focus(Loc new_focus) {
+        if (focus != new_focus) {
+            focus = cur = new_focus;
+        }
+    }
+
     // at file focus
     Loc focus;
+    Loc cur; // current line we are viewing.
 };
 
 struct BottomlineState {
@@ -441,7 +406,7 @@ void mu_command_palette(mu_Context* ctx, ViewerState *view, CommandPaletteState*
             }
 
             if (pal->selected_ix < pal->matches.size()) {
-                view->focus = pal->matches[pal->selected_ix];
+                view->set_focus(pal->matches[pal->selected_ix]);
             }
 
         }
@@ -559,6 +524,16 @@ void mu_viewer(mu_Context* ctx, ViewerState *view, FocusState *focus, const Comm
 
 	mu_update_control(ctx, id, cnt->body, MU_OPT_HOLDFOCUS);
     const bool focused = *focus == FocusState::FSK_Viewer;
+
+    const int N_SCROLL_STEPS = 3;
+    if (ctx->key_pressed & MU_KEY_D) {
+        for (int i = 0; i < N_SCROLL_STEPS; ++i) { view->cur = view->cur.down(); }
+    }
+
+    if (ctx->key_pressed & MU_KEY_U) {
+        for (int i = 0; i < N_SCROLL_STEPS; ++i) { view->cur = view->cur.up(); }
+    }
+
 	if (focused) {
 
         /*
@@ -592,10 +567,10 @@ void mu_viewer(mu_Context* ctx, ViewerState *view, FocusState *focus, const Comm
 
     const int START_LINES_UP = 3;
     const int NLINES = 40;
-    Loc left = view->focus;
+    Loc left = view->cur;
     for (int i = 0; i < START_LINES_UP; ++i) { left = left.up(); }
     left = left.start_of_cur_line();
-    assert(left.line == 0 || view->focus.line - left.line == START_LINES_UP);
+    assert(left.line == 0 || view->cur.line - left.line == START_LINES_UP);
 
 	const mu_Color GRAY_COLOR = { .r = 180, .g = 180, .b = 180, .a = 255 };
 	const mu_Color WHITE_COLOR = { .r = 255, .g = 255, .b = 255, .a = 255 };
@@ -758,6 +733,8 @@ int key_map(int sdl_key) {
     if (sdl_key == SDLK_RIGHT) return MU_KEY_RIGHTARROW;
     if (sdl_key == SDLK_BACKSPACE) return MU_KEY_BACKSPACE;
     if (sdl_key == SDLK_p) return MU_KEY_COMMAND_PALETTE;
+    if (sdl_key == SDLK_d) return MU_KEY_D;
+    if (sdl_key == SDLK_u) return MU_KEY_U;
     if (sdl_key == SDLK_TAB) {
         return MU_KEY_TAB;
     }
@@ -992,6 +969,7 @@ int main(int argc, char** argv) {
 		mu_end(ctx);
 
         /* render */
+		static float bg[3] = { 0, 0, 0 };
         r_clear(mu_color(bg[0], bg[1], bg[2], 255));
         mu_Command* cmd = NULL;
         while (mu_next_command(ctx, &cmd)) {
