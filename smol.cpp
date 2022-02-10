@@ -234,60 +234,107 @@ struct Loc {
 };
 
 
-struct TrieNode {
-    std::unordered_map<int, TrieNode*> next;
-    std::vector<Loc> data;
-    TrieNode* parent = nullptr;
-    TrieNode(TrieNode* parent) : parent(parent) {};
+struct TrieNode;
+struct TrieEdge {
+    File* f = nullptr;
+    int ix = -1;
+    int len = 0;
+    TrieNode* node = nullptr;
+    TrieEdge() {}
+    TrieEdge(File *f, int ix, int len, TrieNode* node) : f(f), ix(ix), len(len), node(node) {};
 };
 
-void index_add(TrieNode* index, const char *key, int len, Loc data) {
-    for(int i = 0; i < len; ++i) {
-        assert(index);
-        const char c = key[i];
-        if (!index->next.count(c)) {
-			index->next[c] = new TrieNode(index);
-        }
-        index = index->next[c];
+struct TrieNode {
+    std::unordered_map<int, TrieEdge> adj;
+    std::vector<Loc> data;
+};
+
+void index_add(TrieNode* index, File *f, int ix, int totlen, Loc data) {
+    assert(f);
+    assert(ix >= 0);
+    assert(ix <= f->len);
+    assert(totlen >= 0);
+
+    if (totlen == 0) {
+        index->data.push_back(data);
+        return;
     }
-    index->data.push_back(data);
+    assert(totlen > 0);
+
+	const char ctip = f->buf[ix];
+	if (!index->adj.count(ctip)) {
+		TrieNode* n = new TrieNode;
+		n->data.push_back(data);
+		index->adj[ctip] = TrieEdge(f, ix, totlen, n);
+		return;
+	}
+	assert(index->adj.count(ctip));
+	const TrieEdge e = index->adj[ctip];
+
+	int matchlen = 0;
+	while (matchlen < totlen && matchlen < e.len && f->buf[ix] == e.f->buf[e.ix + matchlen]) {
+		matchlen++;
+	}
+
+	// we have matched along this edge fully, so we can go to 
+	// the next node.
+	if (matchlen == e.len) {
+		index = e.node;
+		totlen -= matchlen;
+		ix += matchlen;
+        return index_add(e.node, f, ix, totlen, data);
+	}
+
+	// we have matched partially on the edge.
+	// we need to split.
+	assert(matchlen < e.len);
+	TrieNode* leaf = new TrieNode();
+	leaf->data.push_back(data);
+
+	// [OLD] index ---ctip:e ---> rest
+	// [NEW] index --ctip:e--> cur_leaf --crest:erest --> rest
+	// create a new edge from leaf -> rest
+	const char crest = e.f->buf[e.ix + matchlen];
+
+	// (2) cur_leaf --crest:erest --> rest
+	leaf->adj[crest] = e;
+	leaf->adj[crest].len -= matchlen;
+	leaf->adj[crest].ix += matchlen;
+
+	// (1) index ---ctip:e ---> leaf
+	index->adj[ctip].len = matchlen;
+	index->adj[ctip].node = leaf;
+	return;
 };
 
 TrieNode* index_lookup(TrieNode* index, const char* key, int len) {
-    for(int i = 0; i < len; ++i) {
-        assert(index);
-        const char c = key[i];
-        if (!index->next.count(c)) { return nullptr;  }
-        else { index = index->next[c]; }
-    }
-    return index;
+	assert(index);
+	assert(len > 0);
+	if (len == 0) { return index; }
+	const char c = key[0];
+	if (!index->adj.count(c)) { return nullptr; }
+
+	const TrieEdge e = index->adj[c];
+	int i = 0;
+	const char* estr = e.f->buf + e.ix;
+	while (i < e.len &&
+		i < len &&
+		estr[i] == key[i]) {
+		i++;
+	}
+
+	if (i < e.len) {
+		// we haven't reached a node. quit.
+		return nullptr;
+	}
+
+	assert(i == e.len);
+	index = e.node;
+	key += i;
+	len -= i;
+	return index_lookup(e.node, key, len);
 }
 
-
-// returns number of leaves added to out.
-int index_get_leaves(TrieNode* index, std::vector<TrieNode*>& out, int max_to_find) {
-    assert(max_to_find >= 0);
-    if (max_to_find == 0) { return 0; }
-    assert(max_to_find > 0);
-
-    if (index->data.size()) {
-        out.push_back(index);
-    }
-    max_to_find -= 1;
-    assert(max_to_find >= 0);
-    if (max_to_find == 0) { return 1;  }
-
-    int num_added = 0;
-    for (auto it : index->next) {
-        num_added += index_get_leaves(it.second, out, max_to_find - num_added);
-        assert(num_added <= max_to_find);
-        if (num_added == max_to_find) {
-            break;
-        }
-    }
-
-    return num_added;
-}
 
 
 static  char logbuf[64000];
@@ -947,9 +994,10 @@ void task_manager_index_file_timeslice(TaskManager *s, BottomlineState *bot, Tri
 	}
 
 	for (Loc sufloc = *s->index_loc; sufloc.ix < eol.ix; sufloc = sufloc.advance()) {
-		index_add(g_index,
-			s->index_loc->file->buf + sufloc.ix,
-			eol.ix - sufloc.ix, sufloc);
+        const int len = eol.ix - sufloc.ix;
+        // TODO: this seems stupid, what additional data does sufloc even provide? (line, col) info?
+        // the edge seems to contain most of the info?
+        index_add(g_index, sufloc.file, sufloc.ix, len, sufloc);
 		assert(!sufloc.eof());
 	}
 
@@ -983,6 +1031,7 @@ void task_manager_query_timeslice(TaskManager* s, CommandPaletteState *pal, Trie
         if (!cur) {
             return;
         }
+        // we need to explore the full subtree under `cur`.
 		s->query_walk_stack.push(cur);
     }
 
@@ -993,8 +1042,8 @@ void task_manager_query_timeslice(TaskManager* s, CommandPaletteState *pal, Trie
     TrieNode* top = s->query_walk_stack.top();
     s->query_walk_stack.pop();
     pal->matches.insert(pal->matches.end(), top->data.begin(), top->data.end());
-    for (auto it : top->next) {
-        s->query_walk_stack.push(it.second);
+    for (auto it : top->adj) {
+        s->query_walk_stack.push(it.second.node);
     }
 
 }
@@ -1021,8 +1070,7 @@ int main(int argc, char** argv) {
     g_task_manager.indexing = true;
     g_task_manager.ix_it = std::filesystem::recursive_directory_iterator(root_path);
 
-    TrieNode g_index(nullptr);
-    g_index.parent = &g_index; // root node points to itself.
+    TrieNode g_index;
 
     BottomlineState g_bottom_line_state;
     g_bottom_line_state.info = "WELCOME";
