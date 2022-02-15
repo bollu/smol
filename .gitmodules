@@ -1,0 +1,7 @@
+[submodule "tree-sitter"]
+	path = tree-sitter
+	url = git@github.com:tree-sitter/tree-sitter.git
+
+[submodule "lean4-parser"]
+  path = lean4-parser
+	url = git@github.com:tree-sitter/git@github.com:bollu/lean4-parser.git

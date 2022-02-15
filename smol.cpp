@@ -18,6 +18,7 @@
 #include <stack>
 #include <format>
 #include <time.h>
+#include <tree_sitter/api.h>
 
 const int TARGET_FRAMES_PER_SECOND = 15.0;
 const clock_t TARGET_CLOCKS_PER_FRAME = CLOCKS_PER_SEC / TARGET_FRAMES_PER_SECOND;
@@ -897,6 +898,9 @@ void task_manager_run_timeslice(TaskManager *s, CommandPaletteState *pal, Bottom
 
 int main(int argc, char** argv) {
     setlocale(LC_ALL, "");
+
+    // TODO: figure out the grammar.
+	TSParser* parser = ts_parser_new();
     
     const std::filesystem::path root_path(argc == 1 ? "C:\\Users\\bollu\\phd\\lean4\\src\\" : argv[1]);
     std::cout << "root_path: " << root_path << "\n";

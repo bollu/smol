@@ -11,9 +11,12 @@ add_executable (smol
 	"microui/microui-source.c"
 	"microui/renderer.c"
 	"smol.cpp"
+    "tree-sitter/lib/src/lib.c"
 )
 target_include_directories(smol  PUBLIC "sdl/include")
 target_include_directories(smol  PUBLIC "microui")
+target_include_directories(smol  PUBLIC "tree-sitter/lib/src")
+target_include_directories(smol  PUBLIC "tree-sitter/lib/include")
 
 link_directories(${CMAKE_SOURCE_DIR}/sdl/lib/x64/)
 
