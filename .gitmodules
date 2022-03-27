@@ -4,4 +4,4 @@
 
 [submodule "lean4-parser"]
   path = lean4-parser
-	url = git@github.com:tree-sitter/git@github.com:bollu/lean4-parser.git
+	url = git@github.com:bollu/lean4-parser.git
