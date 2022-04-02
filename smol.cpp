@@ -1,4 +1,5 @@
 ﻿// TODO: the art of multiprocessor programming.
+#include <cstdlib>
 #include <SDL.h>
 #define main main
 #include <unordered_map>
@@ -16,7 +17,7 @@
 #include <filesystem>
 #include <fstream>
 #include <stack>
-#include <format>
+// #include <format>
 #include <time.h>
 #include <tree_sitter/api.h>
 
@@ -588,7 +589,7 @@ void mu_viewer(mu_Context* ctx, ViewerState *view, FocusState *focus, const Comm
 
         // 1. draw line number
         char lineno_str[12];
-        itoa(left.line, lineno_str, 10);
+        sprintf(lineno_str, "%d", left.line);
         const int total_len = 5;
         const int num_len = strlen(lineno_str);
         assert(num_len < total_len);
@@ -784,7 +785,7 @@ void task_manager_explore_directory_timeslice(TaskManager *s, BottomlineState *b
     }
 
     assert(std::filesystem::is_regular_file(curp));
-	FILE* fp = _wfopen(curp.c_str(), L"rb");
+	FILE* fp = fopen(curp.c_str(), "rb");
 	assert(fp && "unable to open file");
 
 	fseek(fp, 0, SEEK_END);

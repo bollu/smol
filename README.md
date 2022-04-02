@@ -1,5 +1,7 @@
 # Smol
 
+Read code for [`lite`](https://github.com/rxi/lite) to learn how to build a good IDE.
+
 A tiny language with tiny memory footprint for human size **prototyping**.
 - Functions and dicationries are interchangable. because `smol`.
 - immutable, purely functional. Inbuilt data structures for set, map, list. Because `smol`.
