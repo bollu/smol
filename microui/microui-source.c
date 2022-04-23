@@ -1274,27 +1274,6 @@ int mu_textbox_raw(mu_Context *ctx, char *buf, int bufsz, mu_Id id, mu_Rect r, i
   return res;
 }
 
-// draw textbox which holds numbers.
-static int number_textbox(mu_Context *ctx, mu_Real *value, mu_Rect r, mu_Id id) {
-  if (ctx->mouse_pressed == MU_MOUSE_LEFT && ctx->key_down & MU_KEY_SHIFT &&
-      ctx->hover == id
-  ) {
-    ctx->number_edit = id;
-    sprintf(ctx->number_edit_buf, MU_REAL_FMT, *value);
-  }
-  if (ctx->number_edit == id) {
-    int res = mu_textbox_raw(
-      ctx, ctx->number_edit_buf, sizeof(ctx->number_edit_buf), id, r, 0);
-    if (res & MU_RES_SUBMIT || ctx->focus != id) {
-      *value = strtod(ctx->number_edit_buf, NULL);
-      ctx->number_edit = 0;
-    } else {
-      return 1;
-    }
-  }
-  return 0;
-}
-
 
 int mu_textbox_ex(mu_Context *ctx, char *buf, int bufsz, int opt) {
   mu_Id id = mu_get_id(ctx, &buf, sizeof(buf));
@@ -1312,9 +1291,6 @@ int mu_slider_ex(mu_Context *ctx, mu_Real *value, mu_Real low, mu_Real high,
   mu_Real last = *value, v = last;
   mu_Id id = mu_get_id(ctx, &value, sizeof(value));
   mu_Rect base = mu_layout_next(ctx);
-
-  /* handle text input mode */
-  if (number_textbox(ctx, &v, base, id)) { return res; }
 
   /* handle normal mode */
   mu_update_control(ctx, id, base, opt);
