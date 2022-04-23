@@ -205,7 +205,6 @@ struct mu_Context {
   /* retained state pools */
   mu_PoolItem container_pool[MU_CONTAINERPOOL_SIZE]; // ?
   mu_Container containers[MU_CONTAINERPOOL_SIZE]; // ?
-  mu_PoolItem treenode_pool[MU_TREENODEPOOL_SIZE]; // ?
   int key_down; // whether key remains held down down in this frame or previous frames. Level trigger. should be MU_KEY_* or 0.
   int key_pressed; // whether key is pressed this frame. Edge trigger.
   char input_text[32]; // text that was sent as input in this frame.

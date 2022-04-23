@@ -1209,22 +1209,12 @@ static int header(mu_Context *ctx, const char *label, int opt) {
   mu_Rect r;
   int active, expanded;
   mu_Id id = mu_get_id(ctx, label, strlen(label));
-  int idx = mu_pool_get(ctx, ctx->treenode_pool, MU_TREENODEPOOL_SIZE, id);
   int width = -1;
   mu_layout_row(ctx, 1, &width, 0);
 
-  active = (idx >= 0);
   expanded = (opt & MU_OPT_EXPANDED) ? !active : active;
   r = mu_layout_next(ctx);
   mu_update_control(ctx, id, r, 0);
-
-  /* update pool ref */
-  if (idx >= 0) {
-    if (active) { mu_pool_update(ctx, ctx->treenode_pool, idx); }
-           else { memset(&ctx->treenode_pool[idx], 0, sizeof(mu_PoolItem)); }
-  } else if (active) {
-    mu_pool_init(ctx, ctx->treenode_pool, MU_TREENODEPOOL_SIZE, id);
-  }
 
   /* draw */
     mu_draw_control_frame(ctx, id, r, MU_COLOR_BUTTON, 0);
