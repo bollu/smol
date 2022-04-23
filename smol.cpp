@@ -351,10 +351,10 @@ mu_Id editor_state_mu_id(mu_Context* ctx, ViewerState* view) {
 
 void mu_draw_cursor(mu_Context* ctx, mu_Rect* r) {
     mu_Rect cursor = *r;
-    mu_Font font = ctx->style->font;
+    mu_Font font = ctx->_style.font;
     const int width = r_get_text_width("|", 1);
     mu_draw_text(ctx, font, "|", 1, mu_vec2(r->x - width / 2, r->y),
-                 ctx->style->colors[MU_COLOR_TEXT]);
+                 ctx->_style.colors[MU_COLOR_TEXT]);
     r->w += width;
 }
 
@@ -397,16 +397,16 @@ void mu_command_palette(mu_Context* ctx, ViewerState* view,
             }
         }
 
-        mu_Font font = ctx->style->font;
+        mu_Font font = ctx->_style.font;
 
         mu_layout_begin_column(ctx);
         const int width[] = {800};
         mu_layout_row(ctx, 1, width, ctx->text_height(font));
         mu_Rect r = mu_layout_next(ctx);
         // mu_draw_text(ctx, font, "Command Palette", strlen("Command Palette"),
-        // mu_vec2(r.x, r.y), ctx->style->colors[MU_COLOR_TEXT]);
+        // mu_vec2(r.x, r.y), ctx->_style.colors[MU_COLOR_TEXT]);
         // mu_draw_text(ctx, font, state->input.c_str(), state->input.size(),
-        // mu_vec2(0, 20), ctx->style->colors[MU_COLOR_TEXT]);
+        // mu_vec2(0, 20), ctx->_style.colors[MU_COLOR_TEXT]);
         const mu_Color BLUE_COLOR = {.r = 187, .g = 222, .b = 251, .a = 255};
         mu_draw_text(ctx, font, pal->input.c_str(), pal->input.size(),
                      mu_vec2(r.x, r.y), BLUE_COLOR);
@@ -494,11 +494,11 @@ void mu_command_palette(mu_Context* ctx, ViewerState* view,
 }
 
 void mu_bottom_line(mu_Context* ctx, BottomlineState* s) {
-    mu_Font font = ctx->style->font;
+    mu_Font font = ctx->_style.font;
     mu_Rect parent_body = mu_get_current_container(ctx)->body;
     int y = parent_body.y + parent_body.h - r_get_text_height();
     mu_draw_text(ctx, font, s->info.c_str(), s->info.size(), mu_vec2(0, y),
-                 ctx->style->colors[MU_COLOR_TEXT]);
+                 ctx->_style.colors[MU_COLOR_TEXT]);
 }
 
 void mu_viewer(mu_Context* ctx, ViewerState* view, FocusState* focus,
@@ -509,7 +509,7 @@ void mu_viewer(mu_Context* ctx, ViewerState* view, FocusState* focus,
     assert(view->focus.ix != -1);
 
     int width = -1;
-    mu_Font font = ctx->style->font;
+    mu_Font font = ctx->_style.font;
 
     mu_Id id = editor_state_mu_id(ctx, view);
     mu_Container* cnt = mu_get_current_container(ctx);

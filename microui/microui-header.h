@@ -191,8 +191,7 @@ struct mu_Context {
   int (*text_height)(mu_Font font);
   // void (*draw_frame)(mu_Context *ctx, mu_Rect rect, int colorid);
   /* core state */
-  mu_Style _style; // ?
-  mu_Style *style; // ?
+  mu_Style _style; //style value ?
   mu_Id hover; // ?
   mu_Id focus; // ?
   mu_Id last_id; // last created id/hash.
