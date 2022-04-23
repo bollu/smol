@@ -193,8 +193,7 @@ struct mu_Context {
   mu_Id last_id; // last created id/hash.
   mu_Rect last_rect; // last rect that was using during layout
   int last_zindex; // last z-index that was used. Is used to increase z-index of new containers and popups. 
-  int have_updated_focus; // ?
-  int frame; // ?
+  int frame; // index of which frame we are on.
   mu_Container *scroll_target; // ?
   /* stacks */
   mu_stack(char, MU_COMMANDLIST_SIZE) command_list; // list of draw commands to be interpreted by the client.
@@ -207,8 +206,6 @@ struct mu_Context {
   mu_PoolItem container_pool[MU_CONTAINERPOOL_SIZE]; // ?
   mu_Container containers[MU_CONTAINERPOOL_SIZE]; // ?
   mu_PoolItem treenode_pool[MU_TREENODEPOOL_SIZE]; // ?
-  /* input state */
-  mu_Vec2 scroll_delta;
   int key_down; // whether key remains held down down in this frame or previous frames. Level trigger. should be MU_KEY_* or 0.
   int key_pressed; // whether key is pressed this frame. Edge trigger.
   char input_text[32]; // text that was sent as input in this frame.

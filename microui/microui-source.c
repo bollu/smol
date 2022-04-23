@@ -601,12 +601,6 @@ void mu_end(mu_Context *ctx) {
   expect(ctx->id_stack.idx        == 0);
   expect(ctx->layout_stack.idx    == 0);
 
-  // handle scroll input
-  if (ctx->scroll_target) {
-    ctx->scroll_target->scroll.x += ctx->scroll_delta.x;
-    ctx->scroll_target->scroll.y += ctx->scroll_delta.y;
-  }
-
   // unset focus if focus id was not touched this frame
   // if (!ctx->have_updated_focus) { ctx->focus = 0; }
   // ctx->have_updated_focus = 0;
@@ -1306,7 +1300,7 @@ static void scrollbars(mu_Context *ctx, mu_Container *cnt, mu_Rect *body) {
 static void push_container_body(
   mu_Context *ctx, mu_Container *cnt, mu_Rect body, int opt
 ) {
-  if (~opt & MU_OPT_NOSCROLL) { scrollbars(ctx, cnt, &body); }
+  // if (~opt & MU_OPT_NOSCROLL) { scrollbars(ctx, cnt, &body); }
   push_layout(ctx, expand_rect(body, -ctx->_style.padding), cnt->scroll);
   cnt->body = body;
 }
