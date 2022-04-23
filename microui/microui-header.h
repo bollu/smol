@@ -242,7 +242,6 @@ void mu_update_control(mu_Context *ctx, mu_Id id, mu_Rect rect, int opt);
 #define mu_begin_panel(ctx, name)         mu_begin_panel_ex(ctx, name, 0)
 
 /// crate UI elements.
-void mu_text(mu_Context *ctx, const char *text);
 void mu_label(mu_Context *ctx, const char *text);
 int mu_button_ex(mu_Context *ctx, const char *label, int icon, int opt);
 int mu_header_ex(mu_Context *ctx, const char *label, int opt);
