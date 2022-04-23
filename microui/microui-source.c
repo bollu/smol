@@ -211,8 +211,6 @@ void mu_finalize_events_begin_draw(mu_Context *ctx) {
   ctx->command_list.idx = 0;
   ctx->root_list.idx = 0;
   ctx->scroll_target = NULL;
-  ctx->hover_root = ctx->next_hover_root;
-  ctx->next_hover_root = NULL;
   ctx->frame++;
 }
 
@@ -1011,27 +1009,14 @@ mu_Rect mu_layout_next(mu_Context *ctx) {
 ** controls
 **============================================================================*/
 
-// check if hover_root is currently being drawn. This is checked
-// by walking the container stack, looking for our element.
-static int in_hover_root(mu_Context *ctx) {
-  int i = ctx->container_stack.idx;
-  while (i--) {
-    if (ctx->container_stack.items[i] == ctx->hover_root) { return 1; }
-    /* only root containers have their `head` field set; stop searching if we've
-    ** reached the current root container */
-    if (ctx->container_stack.items[i]->head) { break; }
-  }
-  return 0;
-}
-
-
 // draw a frame which colors based on focus/hover. Hence, a "control frame",
 // such as a button.
 void mu_draw_control_frame(mu_Context *ctx, mu_Id id, mu_Rect rect,
   int colorid, int opt)
 {
   if (opt & MU_OPT_NOFRAME) { return; }
-  colorid += (ctx->focus == id) ? 2 : (ctx->hover == id) ? 1 : 0;
+  // colorid += (ctx->focus == id) ? 2 : (ctx->hover == id) ? 1 : 0;
+  colorid += (ctx->focus == id) ? 2 : 0;
   draw_frame(ctx, rect, colorid);
 }
 
@@ -1252,7 +1237,7 @@ static int header(mu_Context *ctx, const char *label, int istreenode, int opt) {
 
   /* draw */
   if (istreenode) {
-    if (ctx->hover == id) { draw_frame(ctx, r, MU_COLOR_BUTTONHOVER); }
+    // if (ctx->hover == id) { draw_frame(ctx, r, MU_COLOR_BUTTONHOVER); }
   } else {
     mu_draw_control_frame(ctx, id, r, MU_COLOR_BUTTON, 0);
   }
@@ -1365,28 +1350,6 @@ static void end_root_container(mu_Context *ctx) {
 
 
 
-
-void mu_open_popup(mu_Context *ctx, const char *name) {
-  mu_Container *cnt = mu_get_container(ctx, name);
-  /* set as hover root so popup isn't closed in begin_window_ex()  */
-  ctx->hover_root = ctx->next_hover_root = cnt;
-  /* position at mouse cursor, open and bring-to-front */
-  // cnt->rect = mu_rect(ctx->mouse_pos.x, ctx->mouse_pos.y, 1, 1);
-  cnt->open = 1;
-  mu_bring_to_front(ctx, cnt);
-}
-
-
-int mu_begin_popup(mu_Context *ctx, const char *name) {
-  int opt = MU_OPT_POPUP | MU_OPT_AUTOSIZE | MU_OPT_NORESIZE |
-            MU_OPT_NOSCROLL | MU_OPT_NOTITLE | MU_OPT_CLOSED;
-  return mu_begin_window_ex(ctx, name, mu_rect(0, 0, 0, 0), opt);
-}
-
-
-void mu_end_popup(mu_Context *ctx) {
-  mu_end_window(ctx);
-}
 
 
 // What is a panel, versus a window, versus a container?
