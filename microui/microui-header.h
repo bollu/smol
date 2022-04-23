@@ -152,7 +152,6 @@ typedef struct {
   mu_Rect rect; // what is rect v/s body?
   mu_Rect body;
   mu_Vec2 content_size; // what is content_size?
-  mu_Vec2 scroll; // scroll of the container?
   int open; //whether container is open.
 } mu_Container;
 
@@ -177,6 +176,8 @@ struct mu_Context {
   mu_Rect last_rect; // last rect that was using during layout
   int frame; // index of which frame we are on.
   /* stacks */
+  // TODO: convert to stack
+  // TODO: remove all need for jumpCommand
   mu_stack(char, MU_COMMANDLIST_SIZE) command_list; // list of draw commands to be interpreted by the client.
   mu_stack(mu_Container*, MU_ROOTLIST_SIZE) root_list; // ?
   mu_stack(mu_Container*, MU_CONTAINERSTACK_SIZE) container_stack; // ?
