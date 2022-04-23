@@ -212,12 +212,7 @@ struct mu_Context {
   mu_Container containers[MU_CONTAINERPOOL_SIZE]; // ?
   mu_PoolItem treenode_pool[MU_TREENODEPOOL_SIZE]; // ?
   /* input state */
-  mu_Vec2 mouse_pos; // ?
-  mu_Vec2 last_mouse_pos; // ?
-  mu_Vec2 mouse_delta; // ?
-  mu_Vec2 scroll_delta; // /?
-  int mouse_down; // whether mouse remains held down in this frame OR previous frames. Level trigger.
-  int mouse_pressed; // whether mouse is pressed down this frame. Should be MU_MOUSE_* or 0. Edge trigger.
+  mu_Vec2 scroll_delta;
   int key_down; // whether key remains held down down in this frame or previous frames. Level trigger. should be MU_KEY_* or 0.
   int key_pressed; // whether key is pressed this frame. Edge trigger.
   char input_text[32]; // text that was sent as input in this frame.
@@ -279,7 +274,6 @@ mu_Rect mu_layout_next(mu_Context *ctx);
 
 void mu_draw_control_frame(mu_Context *ctx, mu_Id id, mu_Rect rect, int colorid, int opt);
 void mu_draw_control_text(mu_Context *ctx, const char *str, mu_Rect rect, int colorid, int opt);
-int mu_mouse_over(mu_Context *ctx, mu_Rect rect);
 void mu_update_control(mu_Context *ctx, mu_Id id, mu_Rect rect, int opt);
 
 #define mu_button(ctx, label)             mu_button_ex(ctx, label, 0, MU_OPT_ALIGNCENTER)

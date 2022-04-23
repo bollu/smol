@@ -125,32 +125,6 @@ static mu_Style default_style = {
 ** input handlers
 **============================================================================*/
 
-void mu_input_mousemove(mu_Context *ctx, int x, int y) {
-  ctx->mouse_pos = mu_vec2(x, y);
-}
-
-
-void mu_input_mousedown(mu_Context *ctx, int x, int y, int btn) {
-  mu_input_mousemove(ctx, x, y);
-  ctx->mouse_down |= btn;
-  ctx->mouse_pressed |= btn;
-}
-
-
-void mu_input_mouseup(mu_Context *ctx, int x, int y, int btn) {
-  mu_input_mousemove(ctx, x, y);
-  ctx->mouse_down &= ~btn;
-  // NOTE: vvv this code is NOT present, so mouse_pressed tracks a different state than mouse_down.
-  // ctx->mouse_pressed &= ~btn;
-
-}
-
-
-void mu_input_scroll(mu_Context *ctx, int x, int y) {
-  ctx->scroll_delta.x += x;
-  ctx->scroll_delta.y += y;
-}
-
 
 void mu_input_keydown(mu_Context *ctx, int key) {
   ctx->key_pressed |= key;
@@ -239,8 +213,6 @@ void mu_finalize_events_begin_draw(mu_Context *ctx) {
   ctx->scroll_target = NULL;
   ctx->hover_root = ctx->next_hover_root;
   ctx->next_hover_root = NULL;
-  ctx->mouse_delta.x = ctx->mouse_pos.x - ctx->last_mouse_pos.x;
-  ctx->mouse_delta.y = ctx->mouse_pos.y - ctx->last_mouse_pos.y;
   ctx->frame++;
 }
 
@@ -304,10 +276,6 @@ int mu_begin_window_ex(mu_Context *ctx, const char *title, mu_Rect rect, int opt
       mu_Id id = mu_get_id(ctx, "!title", 6);
       mu_update_control(ctx, id, tr, opt);
       mu_draw_control_text(ctx, title, tr, MU_COLOR_TITLETEXT, opt);
-      if (id == ctx->focus && ctx->mouse_down == MU_MOUSE_LEFT) {
-        cnt->rect.x += ctx->mouse_delta.x;
-        cnt->rect.y += ctx->mouse_delta.y;
-      }
       body.y += tr.h;
       body.h -= tr.h;
     }
@@ -319,9 +287,6 @@ int mu_begin_window_ex(mu_Context *ctx, const char *title, mu_Rect rect, int opt
       tr.w -= r.w;
       mu_draw_icon(ctx, MU_ICON_CLOSE, r, ctx->_style.colors[MU_COLOR_TITLETEXT]);
       mu_update_control(ctx, id, r, opt);
-      if (ctx->mouse_pressed == MU_MOUSE_LEFT && id == ctx->focus) {
-        cnt->open = 0;
-      }
     }
   }
 
@@ -333,10 +298,6 @@ int mu_begin_window_ex(mu_Context *ctx, const char *title, mu_Rect rect, int opt
     mu_Id id = mu_get_id(ctx, "!resize", 7);
     mu_Rect r = mu_rect(rect.x + rect.w - sz, rect.y + rect.h - sz, sz, sz);
     mu_update_control(ctx, id, r, opt);
-    if (id == ctx->focus && ctx->mouse_down == MU_MOUSE_LEFT) {
-      cnt->rect.w = mu_max(96, cnt->rect.w + ctx->mouse_delta.x);
-      cnt->rect.h = mu_max(64, cnt->rect.h + ctx->mouse_delta.y);
-    }
   }
 
   /* resize to content size */
@@ -344,11 +305,6 @@ int mu_begin_window_ex(mu_Context *ctx, const char *title, mu_Rect rect, int opt
     mu_Rect r = get_layout(ctx)->body;
     cnt->rect.w = cnt->content_size.x + (cnt->rect.w - r.w);
     cnt->rect.h = cnt->content_size.y + (cnt->rect.h - r.h);
-  }
-
-  /* close if this is a popup window and elsewhere was clicked */
-  if (opt & MU_OPT_POPUP && ctx->mouse_pressed && ctx->hover_root != cnt) {
-    cnt->open = 0;
   }
 
   mu_push_clip_rect(ctx, cnt->body);
@@ -657,20 +613,10 @@ void mu_end(mu_Context *ctx) {
   if (!ctx->have_updated_focus) { ctx->focus = 0; }
   ctx->have_updated_focus = 0;
 
-  // bring hover root to front if mouse was pressed
-  if (ctx->mouse_pressed && ctx->next_hover_root &&
-      ctx->next_hover_root->zindex < ctx->last_zindex &&
-      ctx->next_hover_root->zindex >= 0
-  ) {
-    mu_bring_to_front(ctx, ctx->next_hover_root);
-  }
 
   // reset input state
   ctx->key_pressed = 0;
   ctx->input_text[0] = '\0';
-  ctx->mouse_pressed = 0;
-  ctx->scroll_delta = mu_vec2(0, 0);
-  ctx->last_mouse_pos = ctx->mouse_pos;
 
   // sort root containers by zindex
   n = ctx->root_list.idx;
@@ -1111,14 +1057,6 @@ void mu_draw_control_text(mu_Context *ctx, const char *str, mu_Rect rect,
 }
 
 
-// check that mouse is where we are, and that we are being drawn,
-// and that we are being hovered on (TODO: I guess the last check is to make sure
-// there is nothing above us, z-index wise?)
-int mu_mouse_over(mu_Context *ctx, mu_Rect rect) {
-  return rect_overlaps_vec2(rect, ctx->mouse_pos) &&
-    rect_overlaps_vec2(mu_get_clip_rect(ctx), ctx->mouse_pos) &&
-    in_hover_root(ctx);
-}
 
 
 // update the state of the context relative to the object `id`, which inhabits location
@@ -1129,24 +1067,8 @@ int mu_mouse_over(mu_Context *ctx, mu_Rect rect) {
 // - ctx->focus: the ID of the item being focused.
 // - ctx->have_updated_focus: whether focus has been updated.
 void mu_update_control(mu_Context *ctx, mu_Id id, mu_Rect rect, int opt) {
-  int mouseover = mu_mouse_over(ctx, rect);
-
   if (ctx->focus == id) { ctx->have_updated_focus = 1; }
   if (opt & MU_OPT_NOINTERACT) { return; }
-  if (mouseover && !ctx->mouse_down) { ctx->hover = id; }
-
-  if (ctx->focus == id) {
-    if (ctx->mouse_pressed && !mouseover) { mu_set_focus(ctx, 0); }
-    if (!ctx->mouse_down && ~opt & MU_OPT_HOLDFOCUS) { mu_set_focus(ctx, 0); }
-  }
-
-  if (ctx->hover == id) {
-    if (ctx->mouse_pressed) {
-      mu_set_focus(ctx, id);
-    } else if (!mouseover) {
-      ctx->hover = 0;
-    }
-  }
 }
 
 
@@ -1188,9 +1110,6 @@ int mu_button_ex(mu_Context *ctx, const char *label, int icon, int opt) {
   mu_Rect r = mu_layout_next(ctx);
   mu_update_control(ctx, id, r, opt);
   /* handle click */
-  if (ctx->mouse_pressed == MU_MOUSE_LEFT && ctx->focus == id) {
-    res |= MU_RES_SUBMIT; // submit a text box if attached.
-  }
   /* draw */
   mu_draw_control_frame(ctx, id, r, MU_COLOR_BUTTON, opt);
   if (label) { mu_draw_control_text(ctx, label, r, MU_COLOR_TEXT, opt); }
@@ -1205,11 +1124,6 @@ int mu_checkbox(mu_Context *ctx, const char *label, int *state) {
   mu_Rect r = mu_layout_next(ctx);
   mu_Rect box = mu_rect(r.x, r.y, r.h, r.h);
   mu_update_control(ctx, id, r, 0);
-  /* handle click */
-  if (ctx->mouse_pressed == MU_MOUSE_LEFT && ctx->focus == id) {
-    res |= MU_RES_CHANGE;
-    *state = !*state;
-  }
   /* draw */
   mu_draw_control_frame(ctx, id, box, MU_COLOR_BASE, 0);
   if (*state) {
@@ -1295,13 +1209,6 @@ int mu_slider_ex(mu_Context *ctx, mu_Real *value, mu_Real low, mu_Real high,
   /* handle normal mode */
   mu_update_control(ctx, id, base, opt);
 
-  /* handle input */
-  if (ctx->focus == id &&
-      (ctx->mouse_down | ctx->mouse_pressed) == MU_MOUSE_LEFT)
-  {
-    v = low + (ctx->mouse_pos.x - base.x) * (high - low) / base.w;
-    if (step) { v = (((v + step / 2) / step)) * step; }
-  }
   /* clamp and store value, update res */
   *value = v = mu_clamp(v, low, high);
   if (last != v) { res |= MU_RES_CHANGE; }
@@ -1334,9 +1241,6 @@ static int header(mu_Context *ctx, const char *label, int istreenode, int opt) {
   expanded = (opt & MU_OPT_EXPANDED) ? !active : active;
   r = mu_layout_next(ctx);
   mu_update_control(ctx, id, r, 0);
-
-  /* handle click */
-  active ^= (ctx->mouse_pressed == MU_MOUSE_LEFT && ctx->focus == id);
 
   /* update pool ref */
   if (idx >= 0) {
@@ -1384,9 +1288,10 @@ int mu_header_ex(mu_Context *ctx, const char *label, int opt) {
                                                                             \
       /* handle input */                                                    \
       mu_update_control(ctx, id, base, 0);                                  \
+      /*                                                                    \
       if (ctx->focus == id && ctx->mouse_down == MU_MOUSE_LEFT) {           \
         cnt->scroll.y += ctx->mouse_delta.y * cs.y / base.h;                \
-      }                                                                     \
+      } */                                                                  \
       /* clamp scroll to limits */                                          \
       cnt->scroll.y = mu_clamp(cnt->scroll.y, 0, maxscroll);                \
                                                                             \
@@ -1397,9 +1302,6 @@ int mu_header_ex(mu_Context *ctx, const char *label, int opt) {
       thumb.y += cnt->scroll.y * (base.h - thumb.h) / maxscroll;            \
       draw_frame(ctx, thumb, MU_COLOR_SCROLLTHUMB);                    \
                                                                             \
-      /* set this as the scroll_target (will get scrolled on mousewheel) */ \
-      /* if the mouse is over it */                                         \
-      if (mu_mouse_over(ctx, *b)) { ctx->scroll_target = cnt; }             \
     } else {                                                                \
       cnt->scroll.y = 0;                                                    \
     }                                                                       \
@@ -1440,13 +1342,6 @@ static void mu_begin_window_ex_begin_root_container(mu_Context *ctx, mu_Containe
   // TODO: what is jump?
   push(ctx->root_list, cnt);
   cnt->head = push_jump(ctx, NULL);
-  /* set as hover root if the mouse is overlapping this container and it has a
-  ** higher zindex than the current hover root */
-  if (rect_overlaps_vec2(cnt->rect, ctx->mouse_pos) &&
-      (!ctx->next_hover_root || cnt->zindex > ctx->next_hover_root->zindex)
-  ) {
-    ctx->next_hover_root = cnt;
-  }
   /* clipping is reset here in case a root-container is made within
   ** another root-containers's begin/end block; this prevents the inner
   ** root-container being clipped to the outer.
@@ -1476,7 +1371,7 @@ void mu_open_popup(mu_Context *ctx, const char *name) {
   /* set as hover root so popup isn't closed in begin_window_ex()  */
   ctx->hover_root = ctx->next_hover_root = cnt;
   /* position at mouse cursor, open and bring-to-front */
-  cnt->rect = mu_rect(ctx->mouse_pos.x, ctx->mouse_pos.y, 1, 1);
+  // cnt->rect = mu_rect(ctx->mouse_pos.x, ctx->mouse_pos.y, 1, 1);
   cnt->open = 1;
   mu_bring_to_front(ctx, cnt);
 }

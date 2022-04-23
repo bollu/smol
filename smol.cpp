@@ -899,29 +899,11 @@ int main(int argc, char** argv) {
                 case SDL_QUIT:
                     exit(0);
                     break;
-                case SDL_MOUSEMOTION:
-                    mu_input_mousemove(ctx, e.motion.x, e.motion.y);
-                    break;
-                case SDL_MOUSEWHEEL:
-                    mu_input_scroll(ctx, 0, e.wheel.y * -30);
-                    break;
                 case SDL_TEXTINPUT:
                     mu_input_text(ctx, e.text.text);
                     break;
                     // case SDL_TEXTEDITING: mu_input_text(ctx, e.edit.text);
                     // break;
-
-                case SDL_MOUSEBUTTONDOWN:
-                case SDL_MOUSEBUTTONUP: {
-                    int b = button_map(e.button.button);
-                    if (b && e.type == SDL_MOUSEBUTTONDOWN) {
-                        mu_input_mousedown(ctx, e.button.x, e.button.y, b);
-                    }
-                    if (b && e.type == SDL_MOUSEBUTTONUP) {
-                        mu_input_mouseup(ctx, e.button.x, e.button.y, b);
-                    }
-                    break;
-                }
 
                 case SDL_KEYDOWN:
                 case SDL_KEYUP: {
