@@ -345,32 +345,9 @@ struct CommandPaletteState {
 };
 
 mu_Id editor_state_mu_id(mu_Context* ctx, ViewerState* view) {
-    return mu_get_id(ctx, &view, sizeof(view));
+    return mu_get_id(ctx, &view, sizeof(ViewerState));
 }
 
-/*
-void editor_state_move_left(ViewerState& s) {
-    s.cursor.col = std::max<int>(s.cursor.col - 1, 0);
-}
-
-
-void editor_state_move_right(ViewerState& s) {
-    assert(s.cursor.valid());
-    if (s.cursor.advance().eof()) { return;  }
-    if (is_newline(s.cursor.advance().get())) { return; }
-    s.cursor = s.cursor.advance();
-}
-
-void editor_state_move_up(ViewerState& s) {
-    s.cursor = s.cursor.up();
-    s.render_begin_line = std::min<int>(s.cursor.line, s.render_begin_line);
-}
-
-
-void editor_state_move_down(ViewerState& s) {
-    s.cursor = s.cursor.down();
-}
-*/
 
 void mu_draw_cursor(mu_Context* ctx, mu_Rect* r) {
     mu_Rect cursor = *r;
@@ -675,53 +652,6 @@ static void viewer_window(mu_Context* ctx, ViewerState* ed,
         mu_set_focus(ctx, editor_state_mu_id(ctx, ed));
         mu_viewer(ctx, ed, focus, pal);
         mu_bottom_line(ctx, bot);
-        mu_end_window(ctx);
-    }
-}
-
-static int uint8_slider(mu_Context* ctx, unsigned char* value, int low,
-                        int high) {
-    static float tmp;
-    mu_push_id(ctx, &value, sizeof(value));
-    tmp = *value;
-    int res = mu_slider_ex(ctx, &tmp, low, high, 0, "%.0f", MU_OPT_ALIGNCENTER);
-    *value = tmp;
-    mu_pop_id(ctx);
-    return res;
-}
-
-static void style_window(mu_Context* ctx) {
-    static struct {
-        const char* label;
-        int idx;
-    } colors[] = {{"text:", MU_COLOR_TEXT},
-                  {"border:", MU_COLOR_BORDER},
-                  {"windowbg:", MU_COLOR_WINDOWBG},
-                  {"titlebg:", MU_COLOR_TITLEBG},
-                  {"titletext:", MU_COLOR_TITLETEXT},
-                  {"panelbg:", MU_COLOR_PANELBG},
-                  {"button:", MU_COLOR_BUTTON},
-                  {"buttonhover:", MU_COLOR_BUTTONHOVER},
-                  {"buttonfocus:", MU_COLOR_BUTTONFOCUS},
-                  {"base:", MU_COLOR_BASE},
-                  {"basehover:", MU_COLOR_BASEHOVER},
-                  {"basefocus:", MU_COLOR_BASEFOCUS},
-                  {"scrollbase:", MU_COLOR_SCROLLBASE},
-                  {"scrollthumb:", MU_COLOR_SCROLLTHUMB},
-                  {NULL}};
-
-    if (mu_begin_window(ctx, "Style Editor", mu_rect(350, 250, 300, 240))) {
-        int sw = mu_get_current_container(ctx)->body.w * 0.14;
-        int widths[] = {80, sw, sw, sw, sw, -1};
-        mu_layout_row(ctx, 6, widths, 0);
-        for (int i = 0; colors[i].label; i++) {
-            mu_label(ctx, colors[i].label);
-            uint8_slider(ctx, &ctx->style->colors[i].r, 0, 255);
-            uint8_slider(ctx, &ctx->style->colors[i].g, 0, 255);
-            uint8_slider(ctx, &ctx->style->colors[i].b, 0, 255);
-            uint8_slider(ctx, &ctx->style->colors[i].a, 0, 255);
-            mu_draw_rect(ctx, mu_layout_next(ctx), ctx->style->colors[i]);
-        }
         mu_end_window(ctx);
     }
 }

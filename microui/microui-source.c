@@ -1303,81 +1303,6 @@ int mu_textbox_ex(mu_Context *ctx, char *buf, int bufsz, int opt) {
   return mu_textbox_raw(ctx, buf, bufsz, id, r, opt);
 }
 
-
-int mu_slider_ex(mu_Context *ctx, mu_Real *value, mu_Real low, mu_Real high,
-  mu_Real step, const char *fmt, int opt)
-{
-  char buf[MU_MAX_FMT + 1];
-  mu_Rect thumb;
-  int x, w, res = 0;
-  mu_Real last = *value, v = last;
-  mu_Id id = mu_get_id(ctx, &value, sizeof(value));
-  mu_Rect base = mu_layout_next(ctx);
-
-  /* handle text input mode */
-  if (number_textbox(ctx, &v, base, id)) { return res; }
-
-  /* handle normal mode */
-  mu_update_control(ctx, id, base, opt);
-
-  /* handle input */
-  if (ctx->focus == id &&
-      (ctx->mouse_down | ctx->mouse_pressed) == MU_MOUSE_LEFT)
-  {
-    v = low + (ctx->mouse_pos.x - base.x) * (high - low) / base.w;
-    if (step) { v = (((v + step / 2) / step)) * step; }
-  }
-  /* clamp and store value, update res */
-  *value = v = mu_clamp(v, low, high);
-  if (last != v) { res |= MU_RES_CHANGE; }
-
-  /* draw base */
-  mu_draw_control_frame(ctx, id, base, MU_COLOR_BASE, opt);
-  /* draw thumb */
-  w = ctx->style->thumb_size;
-  x = (v - low) * (base.w - w) / (high - low);
-  thumb = mu_rect(base.x + x, base.y, w, base.h);
-  mu_draw_control_frame(ctx, id, thumb, MU_COLOR_BUTTON, opt);
-  /* draw text  */
-  sprintf(buf, fmt, v);
-  mu_draw_control_text(ctx, buf, base, MU_COLOR_TEXT, opt);
-
-  return res;
-}
-
-
-int mu_number_ex(mu_Context *ctx, mu_Real *value, mu_Real step,
-  const char *fmt, int opt)
-{
-  char buf[MU_MAX_FMT + 1];
-  int res = 0;
-  mu_Id id = mu_get_id(ctx, &value, sizeof(value));
-  mu_Rect base = mu_layout_next(ctx);
-  mu_Real last = *value;
-
-  /* handle text input mode */
-  if (number_textbox(ctx, value, base, id)) { return res; }
-
-  /* handle normal mode */
-  mu_update_control(ctx, id, base, opt);
-
-  /* handle input */
-  if (ctx->focus == id && ctx->mouse_down == MU_MOUSE_LEFT) {
-    *value += ctx->mouse_delta.x * step;
-  }
-  /* set flag if value changed */
-  if (*value != last) { res |= MU_RES_CHANGE; }
-
-  /* draw base */
-  mu_draw_control_frame(ctx, id, base, MU_COLOR_BASE, opt);
-  /* draw text  */
-  sprintf(buf, fmt, *value);
-  mu_draw_control_text(ctx, buf, base, MU_COLOR_TEXT, opt);
-
-  return res;
-}
-
-
 static int header(mu_Context *ctx, const char *label, int istreenode, int opt) {
   mu_Rect r;
   int active, expanded;
@@ -1421,23 +1346,6 @@ static int header(mu_Context *ctx, const char *label, int istreenode, int opt) {
 
 int mu_header_ex(mu_Context *ctx, const char *label, int opt) {
   return header(ctx, label, 0, opt);
-}
-
-
-// what precisely is a treenode?
-int mu_begin_treenode_ex(mu_Context *ctx, const char *label, int opt) {
-  int res = header(ctx, label, 1, opt);
-  if (res & MU_RES_ACTIVE) {
-    get_layout(ctx)->indent += ctx->style->indent;
-    push(ctx->id_stack, ctx->last_id);
-  }
-  return res;
-}
-
-
-void mu_end_treenode(mu_Context *ctx) {
-  get_layout(ctx)->indent -= ctx->style->indent;
-  mu_pop_id(ctx);
 }
 
 
