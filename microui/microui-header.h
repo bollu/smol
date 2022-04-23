@@ -190,7 +190,6 @@ struct mu_Context {
   int (*text_width)(mu_Font font, const char *str, int len);
   int (*text_height)(mu_Font font);
   mu_Style _style; //style value ?
-  mu_Id focus; // ?
   mu_Id last_id; // last created id/hash.
   mu_Rect last_rect; // last rect that was using during layout
   int last_zindex; // last z-index that was used. Is used to increase z-index of new containers and popups. 

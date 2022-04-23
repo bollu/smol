@@ -608,8 +608,8 @@ void mu_end(mu_Context *ctx) {
   }
 
   // unset focus if focus id was not touched this frame
-  if (!ctx->have_updated_focus) { ctx->focus = 0; }
-  ctx->have_updated_focus = 0;
+  // if (!ctx->have_updated_focus) { ctx->focus = 0; }
+  // ctx->have_updated_focus = 0;
 
 
   // reset input state
@@ -640,11 +640,6 @@ void mu_end(mu_Context *ctx) {
   }
 }
 
-
-void mu_set_focus(mu_Context *ctx, mu_Id id) {
-  ctx->focus = id;
-  ctx->have_updated_focus = 1;
-}
 
 
 
@@ -1016,7 +1011,8 @@ void mu_draw_control_frame(mu_Context *ctx, mu_Id id, mu_Rect rect,
 {
   if (opt & MU_OPT_NOFRAME) { return; }
   // colorid += (ctx->focus == id) ? 2 : (ctx->hover == id) ? 1 : 0;
-  colorid += (ctx->focus == id) ? 2 : 0;
+  // colorid += (ctx->focus == id) ? 2 : 0;
+  colorid += 0;
   draw_frame(ctx, rect, colorid);
 }
 
@@ -1052,7 +1048,7 @@ void mu_draw_control_text(mu_Context *ctx, const char *str, mu_Rect rect,
 // - ctx->focus: the ID of the item being focused.
 // - ctx->have_updated_focus: whether focus has been updated.
 void mu_update_control(mu_Context *ctx, mu_Id id, mu_Rect rect, int opt) {
-  if (ctx->focus == id) { ctx->have_updated_focus = 1; }
+  // if (ctx->focus == id) { ctx->have_updated_focus = 1; }
   if (opt & MU_OPT_NOINTERACT) { return; }
 }
 
@@ -1127,7 +1123,8 @@ int mu_textbox_raw(mu_Context *ctx, char *buf, int bufsz, mu_Id id, mu_Rect r, i
   int res = 0;
   mu_update_control(ctx, id, r, opt | MU_OPT_HOLDFOCUS);
 
-  if (ctx->focus == id) {
+  // if (ctx->focus == id) {
+  if (1) {
     /* handle text input */
     int len = strlen(buf);
     int n = mu_min(bufsz - len - 1, (int) strlen(ctx->input_text));
@@ -1147,14 +1144,14 @@ int mu_textbox_raw(mu_Context *ctx, char *buf, int bufsz, mu_Id id, mu_Rect r, i
     }
     /* handle return */
     if (ctx->key_pressed & MU_KEY_RETURN) {
-      mu_set_focus(ctx, 0);
       res |= MU_RES_SUBMIT;
     }
   }
 
   /* draw */
   mu_draw_control_frame(ctx, id, r, MU_COLOR_BASE, opt);
-  if (ctx->focus == id) {
+  // if (ctx->focus == id) {
+  if (1) {
     mu_Color color = ctx->_style.colors[MU_COLOR_TEXT];
     mu_Font font = ctx->_style.font;
     int textw = ctx->text_width(font, buf, -1);

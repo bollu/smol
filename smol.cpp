@@ -649,7 +649,6 @@ static void viewer_window(mu_Context* ctx, ViewerState* ed,
         int width_row[] = {-1};
         mu_layout_row(ctx, 1, width_row, -25);
         mu_layout_row(ctx, 1, width_row, -1);
-        mu_set_focus(ctx, editor_state_mu_id(ctx, ed));
         mu_viewer(ctx, ed, focus, pal);
         mu_bottom_line(ctx, bot);
         mu_end_window(ctx);
