@@ -1214,7 +1214,7 @@ int mu_slider_ex(mu_Context *ctx, mu_Real *value, mu_Real low, mu_Real high,
 
 
 
-static int header(mu_Context *ctx, const char *label, int istreenode, int opt) {
+static int header(mu_Context *ctx, const char *label, int opt) {
   mu_Rect r;
   int active, expanded;
   mu_Id id = mu_get_id(ctx, label, strlen(label));
@@ -1236,11 +1236,7 @@ static int header(mu_Context *ctx, const char *label, int istreenode, int opt) {
   }
 
   /* draw */
-  if (istreenode) {
-    // if (ctx->hover == id) { draw_frame(ctx, r, MU_COLOR_BUTTONHOVER); }
-  } else {
     mu_draw_control_frame(ctx, id, r, MU_COLOR_BUTTON, 0);
-  }
   mu_draw_icon(
     ctx, expanded ? MU_ICON_EXPANDED : MU_ICON_COLLAPSED,
     mu_rect(r.x, r.y, r.h, r.h), ctx->_style.colors[MU_COLOR_TEXT]);
@@ -1253,7 +1249,7 @@ static int header(mu_Context *ctx, const char *label, int istreenode, int opt) {
 
 
 int mu_header_ex(mu_Context *ctx, const char *label, int opt) {
-  return header(ctx, label, 0, opt);
+  return header(ctx, label, opt);
 }
 
 
