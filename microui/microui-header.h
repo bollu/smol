@@ -261,7 +261,6 @@ void mu_draw_control_text(mu_Context *ctx, const char *str, mu_Rect rect, int co
 void mu_update_control(mu_Context *ctx, mu_Id id, mu_Rect rect, int opt);
 
 #define mu_button(ctx, label)             mu_button_ex(ctx, label, 0, MU_OPT_ALIGNCENTER)
-#define mu_textbox(ctx, buf, bufsz)       mu_textbox_ex(ctx, buf, bufsz, 0)
 #define mu_header(ctx, label)             mu_header_ex(ctx, label, 0)
 #define mu_begin_window(ctx, title, rect) mu_begin_window_ex(ctx, title, rect, 0)
 #define mu_begin_panel(ctx, name)         mu_begin_panel_ex(ctx, name, 0)
@@ -270,8 +269,6 @@ void mu_update_control(mu_Context *ctx, mu_Id id, mu_Rect rect, int opt);
 void mu_text(mu_Context *ctx, const char *text);
 void mu_label(mu_Context *ctx, const char *text);
 int mu_button_ex(mu_Context *ctx, const char *label, int icon, int opt);
-int mu_textbox_raw(mu_Context *ctx, char *buf, int bufsz, mu_Id id, mu_Rect r, int opt);
-int mu_textbox_ex(mu_Context *ctx, char *buf, int bufsz, int opt);
 int mu_header_ex(mu_Context *ctx, const char *label, int opt);
 int mu_begin_window_ex(mu_Context *ctx, const char *title, mu_Rect rect, int opt);
 void mu_end_window(mu_Context *ctx);
