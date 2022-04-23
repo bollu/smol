@@ -126,25 +126,7 @@ static mu_Style default_style = {
 **============================================================================*/
 
 
-void mu_input_keydown(mu_Context *ctx, int key) {
-  ctx->key_pressed |= key;
-  ctx->key_down |= key;
-}
 
-
-void mu_input_keyup(mu_Context *ctx, int key) {
-  ctx->key_down &= ~key;
-  // NOTE: vvv this code is NOT present, so key_pressed tracks a different state.
-  // ctx->key_pressed &= ~key;
-}
-
-
-void mu_input_text(mu_Context *ctx, const char *text) {
-  int len = strlen(ctx->input_text);
-  int size = strlen(text) + 1;
-  expect(len + size <= (int) sizeof(ctx->input_text));
-  memcpy(ctx->input_text + len, text, size);
-}
 
 // #### Macros for push & pop
 // These macros are used to push and pop into a C stack data structure.
@@ -599,9 +581,6 @@ void mu_end(mu_Context *ctx) {
   // ctx->have_updated_focus = 0;
 
 
-  // reset input state
-  ctx->key_pressed = 0;
-  ctx->input_text[0] = '\0';
 
   n = ctx->root_list.idx;
 

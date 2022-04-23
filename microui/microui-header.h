@@ -101,22 +101,6 @@ enum {
   MU_MOUSE_MIDDLE     = (1 << 2)
 };
 
-enum {
-  MU_KEY_SHIFT        = (1 << 0),
-  MU_KEY_CTRL         = (1 << 1),
-  MU_KEY_ALT          = (1 << 2),
-  MU_KEY_BACKSPACE    = (1 << 3),
-  MU_KEY_RETURN       = (1 << 4),
-  MU_KEY_LEFTARROW    = (1 << 5),
-  MU_KEY_RIGHTARROW   = (1 << 6),
-  MU_KEY_UPARROW      = (1 << 7),
-  MU_KEY_DOWNARROW    = (1 << 8),
-  MU_KEY_COMMAND_PALETTE = (1 << 9),
-  MU_KEY_TAB = (1 << 10),
-  MU_KEY_D = (1 << 11),
-  MU_KEY_U = (1 << 12),
-};
-
 
 
 typedef struct mu_Context mu_Context;
@@ -202,9 +186,6 @@ struct mu_Context {
   /* retained state pools */
   mu_PoolItem container_pool[MU_CONTAINERPOOL_SIZE]; // ?
   mu_Container containers[MU_CONTAINERPOOL_SIZE]; // ?
-  int key_down; // whether key remains held down down in this frame or previous frames. Level trigger. should be MU_KEY_* or 0.
-  int key_pressed; // whether key is pressed this frame. Edge trigger.
-  char input_text[32]; // text that was sent as input in this frame.
 };
 
 
@@ -233,11 +214,6 @@ mu_Container* mu_get_container(mu_Context *ctx, const char *name);
 int mu_pool_init(mu_Context *ctx, mu_PoolItem *items, int len, mu_Id id);
 int mu_pool_get(mu_Context *ctx, mu_PoolItem *items, int len, mu_Id id);
 void mu_pool_update(mu_Context *ctx, mu_PoolItem *items, int idx);
-
-// input handling
-void mu_input_keydown(mu_Context *ctx, int key);
-void mu_input_keyup(mu_Context *ctx, int key);
-void mu_input_text(mu_Context *ctx, const char *text);
 
 // emit commands from microui and handle
 mu_Command* mu_push_command(mu_Context *ctx, int type, int size);
