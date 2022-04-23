@@ -260,13 +260,13 @@ int mu_begin_window_ex(mu_Context *ctx, const char *title, mu_Rect rect, int opt
     }
 
     /* do `close` button */
-    if (~opt & MU_OPT_NOCLOSE) {
-      mu_Id id = mu_get_id(ctx, "!close", 6);
-      mu_Rect r = mu_rect(tr.x + tr.w - tr.h, tr.y, tr.h, tr.h);
-      tr.w -= r.w;
-      mu_draw_icon(ctx, MU_ICON_CLOSE, r, ctx->_style.colors[MU_COLOR_TITLETEXT]);
-      mu_update_control(ctx, id, r, opt);
-    }
+    // if (~opt & MU_OPT_NOCLOSE) {
+    //   mu_Id id = mu_get_id(ctx, "!close", 6);
+    //   mu_Rect r = mu_rect(tr.x + tr.w - tr.h, tr.y, tr.h, tr.h);
+    //   tr.w -= r.w;
+    //   mu_draw_icon(ctx, MU_ICON_CLOSE, r, ctx->_style.colors[MU_COLOR_TITLETEXT]);
+    //   mu_update_control(ctx, id, r, opt);
+    // }
   }
 
   push_container_body(ctx, cnt, body, opt);
