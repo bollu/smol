@@ -228,7 +228,6 @@ mu_Rect mu_get_clip_rect(mu_Context *ctx);
 int mu_check_clip(mu_Context *ctx, mu_Rect r);
 mu_Container* mu_get_current_container(mu_Context *ctx);
 mu_Container* mu_get_container(mu_Context *ctx, const char *name);
-void mu_bring_to_front(mu_Context *ctx, mu_Container *cnt);
 
 // what are pools for?
 int mu_pool_init(mu_Context *ctx, mu_PoolItem *items, int len, mu_Id id);
