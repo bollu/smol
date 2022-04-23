@@ -654,8 +654,8 @@ void mu_end(mu_Context *ctx) {
   }
 
   // unset focus if focus id was not touched this frame
-  if (!ctx->updated_focus) { ctx->focus = 0; }
-  ctx->updated_focus = 0;
+  if (!ctx->have_updated_focus) { ctx->focus = 0; }
+  ctx->have_updated_focus = 0;
 
   // bring hover root to front if mouse was pressed
   if (ctx->mouse_pressed && ctx->next_hover_root &&
@@ -699,7 +699,7 @@ void mu_end(mu_Context *ctx) {
 
 void mu_set_focus(mu_Context *ctx, mu_Id id) {
   ctx->focus = id;
-  ctx->updated_focus = 1;
+  ctx->have_updated_focus = 1;
 }
 
 
@@ -1123,15 +1123,15 @@ int mu_mouse_over(mu_Context *ctx, mu_Rect rect) {
 
 // update the state of the context relative to the object `id`, which inhabits location
 // `rect`. this updates:
-// - ctx->updated_focus: whether focus was updated.
+// - ctx->have_updated_focus: whether focus was updated.
 // - ctx->hover: whether this element is being hovered on.
 // - mu_set_focus(): if this element should be focused, which sets:
 // - ctx->focus: the ID of the item being focused.
-// - ctx->updated_focus: whether focus has been updated.
+// - ctx->have_updated_focus: whether focus has been updated.
 void mu_update_control(mu_Context *ctx, mu_Id id, mu_Rect rect, int opt) {
   int mouseover = mu_mouse_over(ctx, rect);
 
-  if (ctx->focus == id) { ctx->updated_focus = 1; }
+  if (ctx->focus == id) { ctx->have_updated_focus = 1; }
   if (opt & MU_OPT_NOINTERACT) { return; }
   if (mouseover && !ctx->mouse_down) { ctx->hover = id; }
 

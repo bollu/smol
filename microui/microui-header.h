@@ -195,7 +195,7 @@ struct mu_Context {
   mu_Id last_id; // last created id/hash.
   mu_Rect last_rect; // last rect that was using during layout
   int last_zindex; // last z-index that was used. Is used to increase z-index of new containers and popups. 
-  int updated_focus; // ?
+  int have_updated_focus; // ?
   int frame; // ?
   mu_Container *hover_root; // ?
   mu_Container *next_hover_root; // ?
