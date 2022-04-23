@@ -210,7 +210,6 @@ void mu_finalize_events_begin_draw(mu_Context *ctx) {
   expect(ctx->text_width && ctx->text_height);
   ctx->command_list.idx = 0;
   ctx->root_list.idx = 0;
-  ctx->scroll_target = NULL;
   ctx->frame++;
 }
 

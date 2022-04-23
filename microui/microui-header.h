@@ -192,7 +192,6 @@ struct mu_Context {
   mu_Id last_id; // last created id/hash.
   mu_Rect last_rect; // last rect that was using during layout
   int frame; // index of which frame we are on.
-  mu_Container *scroll_target; // ?
   /* stacks */
   mu_stack(char, MU_COMMANDLIST_SIZE) command_list; // list of draw commands to be interpreted by the client.
   mu_stack(mu_Container*, MU_ROOTLIST_SIZE) root_list; // ?
