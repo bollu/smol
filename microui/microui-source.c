@@ -582,12 +582,6 @@ static void draw_frame(mu_Context *ctx, mu_Rect rect, int colorid) {
 
 
 
-// Compare Z index
-// Retuurn difference of Z indeces between containers `a` and `b`.
-static int compare_zindex(const void *a, const void *b) {
-  return (*(mu_Container**) a)->zindex - (*(mu_Container**) b)->zindex;
-}
-
 
 // End
 // =====
@@ -610,11 +604,11 @@ void mu_end(mu_Context *ctx) {
   ctx->key_pressed = 0;
   ctx->input_text[0] = '\0';
 
-  // sort root containers by zindex
   n = ctx->root_list.idx;
-  qsort(ctx->root_list.items, n, sizeof(mu_Container*), compare_zindex);
 
   // TODO: what is a jump command?
+  // that is, create pointers that connect the set of commands.
+  // a jump command is a simple wau to connect linked lists.
   // sset root container jump commands
   for (i = 0; i < n; i++) {
     mu_Container *cnt = ctx->root_list.items[i];
@@ -716,8 +710,6 @@ static mu_Container* get_container(mu_Context *ctx, mu_Id id, int opt) {
   cnt = &ctx->containers[idx];
   memset(cnt, 0, sizeof(*cnt));
   cnt->open = 1;
-  // bring container to front by increasing z-index.
-  mu_bring_to_front(ctx, cnt);
   return cnt;
 }
 
@@ -727,10 +719,6 @@ mu_Container* mu_get_container(mu_Context *ctx, const char *name) {
   return get_container(ctx, id, 0);
 }
 
-
-void mu_bring_to_front(mu_Context *ctx, mu_Container *cnt) {
-  cnt->zindex = ++ctx->last_zindex;
-}
 
 
 /*============================================================================

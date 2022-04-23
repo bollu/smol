@@ -169,7 +169,6 @@ typedef struct {
   mu_Rect body;
   mu_Vec2 content_size; // what is content_size?
   mu_Vec2 scroll; // scroll of the container?
-  int zindex; // overlapping.
   int open; //whether container is open.
 } mu_Container;
 
@@ -192,7 +191,6 @@ struct mu_Context {
   mu_Style _style; //style value ?
   mu_Id last_id; // last created id/hash.
   mu_Rect last_rect; // last rect that was using during layout
-  int last_zindex; // last z-index that was used. Is used to increase z-index of new containers and popups. 
   int frame; // index of which frame we are on.
   mu_Container *scroll_target; // ?
   /* stacks */
