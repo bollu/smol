@@ -299,9 +299,6 @@ int mu_begin_treenode_ex(mu_Context *ctx, const char *label, int opt);
 void mu_end_treenode(mu_Context *ctx);
 int mu_begin_window_ex(mu_Context *ctx, const char *title, mu_Rect rect, int opt);
 void mu_end_window(mu_Context *ctx);
-void mu_open_popup(mu_Context *ctx, const char *name);
-int mu_begin_popup(mu_Context *ctx, const char *name);
-void mu_end_popup(mu_Context *ctx);
 void mu_begin_panel_ex(mu_Context *ctx, const char *name, int opt);
 void mu_end_panel(mu_Context *ctx);
 
