@@ -253,7 +253,6 @@ int mu_begin_window_ex(mu_Context *ctx, const char *title, mu_Rect rect, int opt
     /* do title text */
     if (~opt & MU_OPT_NOTITLE) {
       mu_Id id = mu_get_id(ctx, "!title", 6);
-      mu_update_control(ctx, id, tr, opt);
       mu_draw_control_text(ctx, title, tr, MU_COLOR_TITLETEXT, opt);
       body.y += tr.h;
       body.h -= tr.h;
@@ -265,7 +264,6 @@ int mu_begin_window_ex(mu_Context *ctx, const char *title, mu_Rect rect, int opt
     //   mu_Rect r = mu_rect(tr.x + tr.w - tr.h, tr.y, tr.h, tr.h);
     //   tr.w -= r.w;
     //   mu_draw_icon(ctx, MU_ICON_CLOSE, r, ctx->_style.colors[MU_COLOR_TITLETEXT]);
-    //   mu_update_control(ctx, id, r, opt);
     // }
   }
 
@@ -276,7 +274,6 @@ int mu_begin_window_ex(mu_Context *ctx, const char *title, mu_Rect rect, int opt
     int sz = ctx->_style.title_height;
     mu_Id id = mu_get_id(ctx, "!resize", 7);
     mu_Rect r = mu_rect(rect.x + rect.w - sz, rect.y + rect.h - sz, sz, sz);
-    mu_update_control(ctx, id, r, opt);
   }
 
   /* resize to content size */
@@ -458,13 +455,7 @@ void mu_end_window(mu_Context *ctx) {
 // implementation should use `mu_layout_next()` to get its destination
 // Rect and advance the layout system. `mu_get_id()` should be used with
 // some data unique to the control to generate an ID for that control and
-// `mu_update_control()` should be used to update the context's `hover`
-// and `focus` values based on the mouse input state.
 // 
-// The `MU_OPT_HOLDFOCUS` opt value can be passed to `mu_update_control()`
-// if we want the control to retain focus when the mouse button is released
-// — this behaviour is used by textboxes which we want to stay focused
-// to allow for text input.
 // 
 // A control that acts as a button which displays an integer and, when
 // clicked increments that integer, could be implemented as such:
@@ -472,7 +463,6 @@ void mu_end_window(mu_Context *ctx) {
 // int incrementer(mu_Context *ctx, int *value) {
 //   mu_Id     id = mu_get_id(ctx, &value, sizeof(value));
 //   mu_Rect rect = mu_layout_next(ctx);
-//   mu_update_control(ctx, id, rect, 0);
 // 
 //   /* handle input */
 //   int res = 0;
@@ -969,9 +959,6 @@ void mu_draw_control_frame(mu_Context *ctx, mu_Id id, mu_Rect rect,
   int colorid, int opt)
 {
   if (opt & MU_OPT_NOFRAME) { return; }
-  // colorid += (ctx->focus == id) ? 2 : (ctx->hover == id) ? 1 : 0;
-  // colorid += (ctx->focus == id) ? 2 : 0;
-  colorid += 0;
   draw_frame(ctx, rect, colorid);
 }
 
@@ -998,18 +985,6 @@ void mu_draw_control_text(mu_Context *ctx, const char *str, mu_Rect rect,
 
 
 
-
-// update the state of the context relative to the object `id`, which inhabits location
-// `rect`. this updates:
-// - ctx->have_updated_focus: whether focus was updated.
-// - ctx->hover: whether this element is being hovered on.
-// - mu_set_focus(): if this element should be focused, which sets:
-// - ctx->focus: the ID of the item being focused.
-// - ctx->have_updated_focus: whether focus has been updated.
-void mu_update_control(mu_Context *ctx, mu_Id id, mu_Rect rect, int opt) {
-  // if (ctx->focus == id) { ctx->have_updated_focus = 1; }
-  if (opt & MU_OPT_NOINTERACT) { return; }
-}
 
 
 void mu_text(mu_Context *ctx, const char *text) {
@@ -1048,8 +1023,6 @@ int mu_button_ex(mu_Context *ctx, const char *label, int icon, int opt) {
   mu_Id id = label ? mu_get_id(ctx, label, strlen(label))
                    : mu_get_id(ctx, &icon, sizeof(icon));
   mu_Rect r = mu_layout_next(ctx);
-  mu_update_control(ctx, id, r, opt);
-  /* handle click */
   /* draw */
   mu_draw_control_frame(ctx, id, r, MU_COLOR_BUTTON, opt);
   if (label) { mu_draw_control_text(ctx, label, r, MU_COLOR_TEXT, opt); }
@@ -1069,7 +1042,6 @@ static int header(mu_Context *ctx, const char *label, int opt) {
 
   expanded = (opt & MU_OPT_EXPANDED) ? !active : active;
   r = mu_layout_next(ctx);
-  mu_update_control(ctx, id, r, 0);
 
   /* draw */
     mu_draw_control_frame(ctx, id, r, MU_COLOR_BUTTON, 0);
