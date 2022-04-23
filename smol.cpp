@@ -312,6 +312,53 @@ const TrieNode* index_lookup(const TrieNode* index, const char* key, int len) {
     return index_lookup(e.node, key, len);
 }
 
+enum {
+    MU_KEY_SHIFT = (1 << 0),
+    MU_KEY_CTRL = (1 << 1),
+    MU_KEY_ALT = (1 << 2),
+    MU_KEY_BACKSPACE = (1 << 3),
+    MU_KEY_RETURN = (1 << 4),
+    MU_KEY_LEFTARROW = (1 << 5),
+    MU_KEY_RIGHTARROW = (1 << 6),
+    MU_KEY_UPARROW = (1 << 7),
+    MU_KEY_DOWNARROW = (1 << 8),
+    MU_KEY_COMMAND_PALETTE = (1 << 9),
+    MU_KEY_TAB = (1 << 10),
+    MU_KEY_D = (1 << 11),
+    MU_KEY_U = (1 << 12),
+};
+
+struct EventState {
+    int key_pressed;    // true if key was pressed this frame. reset each frame.
+    int key_held_down;  // true if key was held down.
+    char input_text[32];
+
+    EventState() {
+        this->key_pressed = 0;
+        this->key_held_down = 0;
+        this->input_text[0] = 0;
+    }
+
+    void start_frame() {
+        this->key_pressed = 0;
+        this->input_text[0] = 0;
+    }
+
+    void set_keydown(int key) {
+        this->key_pressed |= key;
+        this->key_held_down |= key;
+    }
+
+    void set_keyup(int key) { this->key_held_down &= ~key; }
+
+    void set_input_text(const char* text) {
+        int len = strlen(input_text);
+        int size = strlen(text) + 1;
+        assert(len + size <= (int)sizeof(input_text));
+        memcpy(input_text + len, text, size);
+    }
+};
+
 // TODO: rename to viewer.
 struct ViewerState {
     void set_focus(Loc new_focus) {
@@ -348,7 +395,6 @@ mu_Id editor_state_mu_id(mu_Context* ctx, ViewerState* view) {
     return mu_get_id(ctx, &view, sizeof(ViewerState));
 }
 
-
 void mu_draw_cursor(mu_Context* ctx, mu_Rect* r) {
     mu_Rect cursor = *r;
     mu_Font font = ctx->_style.font;
@@ -358,36 +404,37 @@ void mu_draw_cursor(mu_Context* ctx, mu_Rect* r) {
     r->w += width;
 }
 
-void mu_command_palette(mu_Context* ctx, ViewerState* view,
+void mu_command_palette(mu_Context* ctx, EventState* event,
+                        ViewerState *view,
                         CommandPaletteState* pal, FocusState* focus) {
     assert(pal->selected_ix <= (int)pal->matches.size());
 
     const bool focused = *focus == FocusState::FSK_Palette;
     if (mu_begin_window(ctx, "CMD", mu_Rect(0, 0, 1400, 720 / 2))) {
         if (focused) {
-            if (ctx->key_pressed & MU_KEY_BACKSPACE) {
+            if (event->key_pressed & MU_KEY_BACKSPACE) {
                 pal->sequence_number++;
                 pal->input.resize(std::max<int>(0, pal->input.size() - 1));
             }
 
             // TODO: Ask @codelegend for clean way to handle this.
-            if (ctx->key_pressed & MU_KEY_DOWNARROW) {
+            if (event->key_pressed & MU_KEY_DOWNARROW) {
                 pal->selected_ix = std::min<int>(pal->selected_ix + 1,
                                                  pal->matches.size() - 1);
             }
 
-            if (ctx->key_pressed & MU_KEY_UPARROW) {
+            if (event->key_pressed & MU_KEY_UPARROW) {
                 pal->selected_ix = std::max<int>(0, pal->selected_ix - 1);
             }
 
-            if (ctx->key_pressed & MU_KEY_RETURN) {
+            if (event->key_pressed & MU_KEY_RETURN) {
                 *focus = FocusState::FSK_Viewer;
             }
 
-            if (strlen(ctx->input_text)) {
+            if (strlen(event->input_text)) {
                 /* handle key press. stolen from mu_textbox_raw */
                 pal->sequence_number++;
-                pal->input += std::string(ctx->input_text);
+                pal->input += std::string(event->input_text);
                 pal->matches = {};
                 pal->selected_ix = 0;
             }
@@ -501,8 +548,8 @@ void mu_bottom_line(mu_Context* ctx, BottomlineState* s) {
                  ctx->_style.colors[MU_COLOR_TEXT]);
 }
 
-void mu_viewer(mu_Context* ctx, ViewerState* view, FocusState* focus,
-               const CommandPaletteState* pal) {
+void mu_viewer(mu_Context* ctx, EventState* event, ViewerState* view,
+               FocusState* focus, const CommandPaletteState* pal) {
     if (view->focus.ix == -1) {
         return;
     }
@@ -519,13 +566,13 @@ void mu_viewer(mu_Context* ctx, ViewerState* view, FocusState* focus,
     const bool focused = *focus == FocusState::FSK_Viewer;
 
     const int N_SCROLL_STEPS = 3;
-    if (ctx->key_pressed & MU_KEY_D) {
+    if (event->key_pressed & MU_KEY_D) {
         for (int i = 0; i < N_SCROLL_STEPS; ++i) {
             view->cur = view->cur.down();
         }
     }
 
-    if (ctx->key_pressed & MU_KEY_U) {
+    if (event->key_pressed & MU_KEY_U) {
         for (int i = 0; i < N_SCROLL_STEPS; ++i) {
             view->cur = view->cur.up();
         }
@@ -550,7 +597,7 @@ void mu_viewer(mu_Context* ctx, ViewerState* view, FocusState* focus,
         }
         */
 
-        if (ctx->key_pressed & MU_KEY_TAB) {
+        if (event->key_pressed & MU_KEY_TAB) {
             *focus = FocusState::FSK_Palette;
         }
     }
@@ -639,7 +686,8 @@ void mu_viewer(mu_Context* ctx, ViewerState* view, FocusState* focus,
     mu_layout_end_column(ctx);
 }
 
-static void viewer_window(mu_Context* ctx, ViewerState* ed,
+static void viewer_window(mu_Context* ctx, 
+        EventState *event, ViewerState* view,
                           BottomlineState* bot, FocusState* focus,
                           const CommandPaletteState* pal) {
     const int window_opts = MU_OPT_NOTITLE | MU_OPT_NOCLOSE | MU_OPT_NORESIZE;
@@ -649,7 +697,7 @@ static void viewer_window(mu_Context* ctx, ViewerState* ed,
         int width_row[] = {-1};
         mu_layout_row(ctx, 1, width_row, -25);
         mu_layout_row(ctx, 1, width_row, -1);
-        mu_viewer(ctx, ed, focus, pal);
+        mu_viewer(ctx, event, view, focus, pal);
         mu_bottom_line(ctx, bot);
         mu_end_window(ctx);
     }
@@ -880,6 +928,8 @@ int main(int argc, char** argv) {
 
     FocusState g_focus_state = FocusState::FSK_Palette;
 
+    EventState g_event_state;
+
     SDL_Init(SDL_INIT_EVERYTHING);
     r_init();
 
@@ -892,6 +942,7 @@ int main(int argc, char** argv) {
     /* main loop */
     for (;;) {
         /* handle SDL events */
+        g_event_state.start_frame();
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
             switch (e.type) {
@@ -899,7 +950,7 @@ int main(int argc, char** argv) {
                     exit(0);
                     break;
                 case SDL_TEXTINPUT:
-                    mu_input_text(ctx, e.text.text);
+                    g_event_state.set_input_text(e.text.text);
                     break;
                     // case SDL_TEXTEDITING: mu_input_text(ctx, e.edit.text);
                     // break;
@@ -910,10 +961,10 @@ int main(int argc, char** argv) {
                     // int c = key_map(e.key.keysym.sym & 0xff);
                     int c = key_map(e.key.keysym.sym);
                     if (c && e.type == SDL_KEYDOWN) {
-                        mu_input_keydown(ctx, c);
+                        g_event_state.set_keydown(c);
                     }
                     if (c && e.type == SDL_KEYUP) {
-                        mu_input_keyup(ctx, c);
+                        g_event_state.set_keyup(c);
                     }
                     break;
                 }
@@ -930,9 +981,9 @@ int main(int argc, char** argv) {
 
         /* process frame */
         mu_finalize_events_begin_draw(ctx);
-        viewer_window(ctx, &g_viewer_state, &g_bottom_line_state,
+        viewer_window(ctx, &g_event_state, &g_viewer_state, &g_bottom_line_state,
                       &g_focus_state, &g_command_palette_state);
-        mu_command_palette(ctx, &g_viewer_state, &g_command_palette_state,
+        mu_command_palette(ctx, &g_event_state, &g_viewer_state, &g_command_palette_state,
                            &g_focus_state);
         mu_end(ctx);
 
