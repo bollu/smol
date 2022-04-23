@@ -229,7 +229,7 @@ int mu_begin_window_ex(mu_Context *ctx, const char *title, mu_Rect rect, int opt
   // find the container for this, and raise it to the front.
   mu_Container *cnt = get_container(ctx, id, opt);
   // if we can't find a container, or it is closed, give up.
-  if (!cnt || !cnt->open) { return 0; }
+  if (!cnt) { return 0; }
   // push the container ID onto the stack. (TODO: why?)
   push(ctx->id_stack, id);
   // if container is new(?), set its rect. (TODO: WHY?)
@@ -677,7 +677,7 @@ static mu_Container* get_container(mu_Context *ctx, mu_Id id, int opt) {
   int idx = mu_pool_get(ctx, ctx->container_pool, MU_CONTAINERPOOL_SIZE, id);
   if (idx >= 0) {
     // TODO: why is this || ?
-    if (ctx->containers[idx].open || ~opt & MU_OPT_CLOSED) {
+    if (~opt & MU_OPT_CLOSED) {
       mu_pool_update(ctx, ctx->container_pool, idx);
     }
     return &ctx->containers[idx];
@@ -687,7 +687,6 @@ static mu_Container* get_container(mu_Context *ctx, mu_Id id, int opt) {
   idx = mu_pool_init(ctx, ctx->container_pool, MU_CONTAINERPOOL_SIZE, id);
   cnt = &ctx->containers[idx];
   memset(cnt, 0, sizeof(*cnt));
-  cnt->open = 1;
   return cnt;
 }
 

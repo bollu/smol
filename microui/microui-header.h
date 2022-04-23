@@ -152,7 +152,6 @@ typedef struct {
   mu_Rect rect; // what is rect v/s body?
   mu_Rect body;
   mu_Vec2 content_size; // what is content_size?
-  int open; //whether container is open.
 } mu_Container;
 
 typedef struct {
