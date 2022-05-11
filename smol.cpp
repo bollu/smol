@@ -26,6 +26,10 @@ const int TARGET_FRAMES_PER_SECOND = 15.0;
 const clock_t TARGET_CLOCKS_PER_FRAME =
     CLOCKS_PER_SEC / TARGET_FRAMES_PER_SECOND;
 
+// TODO: Need a language that can define projections into a large struct.
+// Useful for having god objects, where you hand different views of the god objct
+// to different people.
+
 // https://15721.courses.cs.cmu.edu/spring2018/papers/09-oltpindexes2/leis-icde2013.pdf
 // Ukkonen
 
@@ -369,12 +373,12 @@ struct EventState {
 static const int MAXLINELEN = 120;
 static const int MAXLINES = 1e6;
 struct Cursor {
-    int line; int col;
+    int line = 0; int col = 0;
+
 };
 
 
 struct EditorState {
-    Cursor cursor;
     char text[MAXLINES][MAXLINELEN];
     int linelen[MAXLINES];
     EditorState() {
@@ -387,20 +391,27 @@ struct EditorState {
     }
 };
 
-void cursor_up(EditorState *editor) {
-    editor->cursor.line = std::max<int>(0, editor->cursor.line - 1);
-    editor->cursor.col = std::min<int>(editor->linelen[editor->cursor.line], editor->cursor.col);
+// struct EditorState {
+//     Cursor cursor;
+// };
+
+Cursor cursor_up(EditorState *editor, Cursor cursor) {
+    cursor.line = std::max<int>(0, cursor.line - 1);
+    cursor.col = std::min<int>(editor->linelen[cursor.line], cursor.col);
+    return cursor;
 };
 
-void cursor_down(EditorState *editor) {
-    editor->cursor.line = std::min<int>(MAXLINES - 1, editor->cursor.line + 1);
-    editor->cursor.col = std::min<int>(editor->linelen[editor->cursor.line], editor->cursor.col);
+Cursor cursor_down(EditorState *editor, Cursor cursor) {
+    cursor.line = std::min<int>(MAXLINES - 1, cursor.line + 1);
+    cursor.col = std::min<int>(editor->linelen[cursor.line], cursor.col);
+    return cursor;
 };
 
-void cursor_insert_str(EditorState *editor, char *s) {
-    const int len = strlen(s);
-    int *linelen = &editor->linelen[editor->cursor.line];
-    char *line = editor->text[editor->cursor.line];
+
+// insert code into editor at cursor, and move cursor by string length.
+Cursor cursor_insert_str(EditorState *editor, Cursor cursor, char *buf, int len) {
+    int *linelen = &editor->linelen[cursor.line];
+    char *line = editor->text[cursor.line];
 
     // printf("insert str %d:%d(%s)| old: %s:%d\n", editor->cursor.line, editor->cursor.col, 
 
@@ -408,17 +419,28 @@ void cursor_insert_str(EditorState *editor, char *s) {
         assert(false && "unhandled line break");
     }
     assert(*linelen < MAXLINELEN);
-    const int cur_begin = editor->cursor.col;
+    const int cur_begin = cursor.col;
     const int new_begin = cur_begin + len;
     const int movelen = *linelen - cur_begin;
     for(int i = movelen - 1; i >= 0; i--) {
         line[new_begin + i] = line[cur_begin + i];
     }
     for(int i = 0; i < len; ++i) {
-        line[cur_begin+i] = s[i];
+        line[cur_begin+i] = buf[i];
     }
     *linelen += len;
-    editor->cursor.col += len;
+    cursor.col += len;
+    return cursor;
+}
+
+Cursor cursor_delete_till_end_of_line(EditorState *editor, Cursor cursor) {
+    // clear text.
+    for(int i = cursor.col; i < editor->linelen[cursor.line]; ++i) {
+        editor->text[cursor.line][i] = 0;
+    }
+    // adjust line length
+    editor->linelen[cursor.line] = cursor.col;
+    return cursor;
 }
 
 struct BottomlineState {
@@ -600,6 +622,8 @@ void mu_bottom_line(mu_Context* ctx, BottomlineState* s) {
 
 void mu_editor(mu_Context* ctx, EventState* event, EditorState* editor,
                FocusState* focus, const CommandPaletteState* pal) {
+    static Cursor cursor;
+
     int width = -1;
     mu_Font font = ctx->_style.font;
 
@@ -610,35 +634,46 @@ void mu_editor(mu_Context* ctx, EventState* event, EditorState* editor,
     const int N_SCROLL_STEPS = 15;
     const bool focused = true; 
     if (focused) {
-        cursor_insert_str(editor, event->input_text);
+        cursor = cursor_insert_str(editor, cursor, event->input_text, strlen(event->input_text));
         if (event->key_held_down & KEY_CTRL && event->key_pressed & KEY_D) {
             for (int i = 0; i < N_SCROLL_STEPS; ++i) {
-                cursor_down(editor);
+                cursor = cursor_down(editor, cursor);
             }
         }
 
         if (event->key_held_down & KEY_CTRL && event->key_pressed & KEY_U) {
             for (int i = 0; i < N_SCROLL_STEPS; ++i) {
-                cursor_up(editor);
+                cursor = cursor_up(editor, cursor);
             }
         }
         
         if (event->key_pressed & KEY_UPARROW) {
-            cursor_up(editor);
+            cursor = cursor_up(editor, cursor);
         }
 
         if (event->key_pressed & KEY_DOWNARROW) {
-            cursor_down(editor);
+            cursor = cursor_down(editor, cursor);
         }
 
 
         if (event->key_pressed & KEY_LEFTARROW) {
-            editor->cursor.col = std::max<int>(editor->cursor.col - 1, 0);
+            cursor.col = std::max<int>(cursor.col - 1, 0);
         }
 
         if (event->key_pressed & KEY_RIGHTARROW) {
-            editor->cursor.col = std::min<int>(editor->cursor.col + 1, 
-                    editor->linelen[editor->cursor.line]);
+            cursor.col = std::min<int>(cursor.col + 1,
+                    editor->linelen[cursor.line]);
+        }
+
+        if (event->key_pressed & KEY_RETURN) {
+            int len = editor->linelen[cursor.line] - cursor.col;
+            char *s = editor->text[cursor.line] + cursor.col;
+            // copy text to next line
+            Cursor new_cursor = cursor_down(editor, cursor);
+            new_cursor.col = 0;
+            cursor_insert_str(editor, new_cursor, s, len);
+            cursor_delete_till_end_of_line(editor, cursor);
+            cursor = new_cursor;
         }
     }
 
@@ -652,11 +687,11 @@ void mu_editor(mu_Context* ctx, EventState* event, EditorState* editor,
     const mu_Color WHITE_COLOR = {.r = 255, .g = 255, .b = 255, .a = 255};
     const mu_Color BLUE_COLOR = {.r = 187, .g = 222, .b = 251, .a = 255};
 
-    const int line_begin = std::max<int>(0, editor->cursor.line - NLINES/2);
+    const int line_begin = std::max<int>(0, cursor.line - NLINES/2);
     for (int line = line_begin; line < line_begin + NLINES; ++line) {
         mu_Rect r = mu_layout_next(ctx);
 
-        const bool SELECTED = editor->cursor.line == line;
+        const bool SELECTED = cursor.line == line;
 
         // 1. draw line number
         static const int MAX_LINE_STRLEN = 5;
@@ -675,8 +710,8 @@ void mu_editor(mu_Context* ctx, EventState* event, EditorState* editor,
         r.h = ctx->text_height(font);
         // draw text. yes less than or equals to enable writing of cursor.
         for (int col = 0; col <= editor->linelen[line]; ++col) {
-            if (focused && line == editor->cursor.line &&
-                    col == editor->cursor.col) {
+            if (focused && line == cursor.line &&
+                    col == cursor.col) {
                 mu_draw_cursor(ctx, &r);
             }
 
@@ -1020,4 +1055,3 @@ int main(int argc, char** argv) {
 
     return 0;
 }
-
