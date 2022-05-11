@@ -357,6 +357,7 @@ struct EventState {
     void set_keyup(int key) { this->key_held_down &= ~key; }
 
     void set_input_text(const char* text) {
+        printf("text: |%s|\n", text);
         int len = strlen(input_text);
         int size = strlen(text) + 1;
         assert(len + size <= (int)sizeof(input_text));
@@ -365,7 +366,7 @@ struct EventState {
 };
 
 // TODO: rename to viewer.
-static const int LINELEN = 120;
+static const int MAXLINELEN = 120;
 static const int MAXLINES = 1e6;
 struct Cursor {
     int line; int col;
@@ -374,12 +375,12 @@ struct Cursor {
 
 struct EditorState {
     Cursor cursor;
-    char text[MAXLINES][LINELEN];
+    char text[MAXLINES][MAXLINELEN];
     int linelen[MAXLINES];
     EditorState() {
         for(int line = 0; line < MAXLINES; ++line){
             linelen[line] = 0;
-            for(int col = 0; col < LINELEN; ++col) {
+            for(int col = 0; col < MAXLINELEN; ++col) {
                 text[line][col] = 0;
             }
         }
@@ -388,11 +389,37 @@ struct EditorState {
 
 void cursor_up(EditorState *editor) {
     editor->cursor.line = std::max<int>(0, editor->cursor.line - 1);
+    editor->cursor.col = std::min<int>(editor->linelen[editor->cursor.line], editor->cursor.col);
 };
 
 void cursor_down(EditorState *editor) {
     editor->cursor.line = std::min<int>(MAXLINES - 1, editor->cursor.line + 1);
+    editor->cursor.col = std::min<int>(editor->linelen[editor->cursor.line], editor->cursor.col);
 };
+
+void cursor_insert_str(EditorState *editor, char *s) {
+    const int len = strlen(s);
+    int *linelen = &editor->linelen[editor->cursor.line];
+    char *line = editor->text[editor->cursor.line];
+
+    // printf("insert str %d:%d(%s)| old: %s:%d\n", editor->cursor.line, editor->cursor.col, 
+
+    if (*linelen == MAXLINELEN) {
+        assert(false && "unhandled line break");
+    }
+    assert(*linelen < MAXLINELEN);
+    const int cur_begin = editor->cursor.col;
+    const int new_begin = cur_begin + len;
+    const int movelen = *linelen - cur_begin;
+    for(int i = movelen - 1; i >= 0; i--) {
+        line[new_begin + i] = line[cur_begin + i];
+    }
+    for(int i = 0; i < len; ++i) {
+        line[cur_begin+i] = s[i];
+    }
+    *linelen += len;
+    editor->cursor.col += len;
+}
 
 struct BottomlineState {
     std::string info;
@@ -414,7 +441,7 @@ struct CommandPaletteState {
 };
 
 mu_Id editor_state_mu_id(mu_Context* ctx, EditorState* editor) {
-    return mu_get_id(ctx, editor, sizeof(EditorState));
+    return mu_get_id(ctx, &editor, sizeof(EditorState*));
 }
 
 void mu_draw_cursor(mu_Context* ctx, mu_Rect* r) {
@@ -580,43 +607,42 @@ void mu_editor(mu_Context* ctx, EventState* event, EditorState* editor,
     mu_Container* cnt = mu_get_current_container(ctx);
     assert(cnt && "must be within container");
 
-    const bool focused = *focus == FocusState::FSK_Viewer;
-
     const int N_SCROLL_STEPS = 3;
-    if (event->key_pressed & KEY_D) {
-        for (int i = 0; i < N_SCROLL_STEPS; ++i) {
-            cursor_down(editor);
+    const bool focused = true; 
+    if (focused) {
+        cursor_insert_str(editor, event->input_text);
+        if (event->key_pressed & KEY_D) {
+            for (int i = 0; i < N_SCROLL_STEPS; ++i) {
+                cursor_down(editor);
+            }
         }
-    }
 
-    if (event->key_pressed & KEY_U) {
-        for (int i = 0; i < N_SCROLL_STEPS; ++i) {
+        if (event->key_pressed & KEY_U) {
+            for (int i = 0; i < N_SCROLL_STEPS; ++i) {
+                cursor_up(editor);
+            }
+        }
+        
+        if (event->key_pressed & KEY_UPARROW) {
             cursor_up(editor);
         }
-    }
 
-    if (focused) {
-        /*
-        if (ctx->key_pressed & KEY_UPARROW) {
-            editor_state_move_up(*editor);
+        if (event->key_pressed & KEY_DOWNARROW) {
+            cursor_down(editor);
         }
 
-        if (ctx->key_pressed & KEY_DOWNARROW) {
-            editor_state_move_down(*editor);
-        }
+        // if (ctx->key_pressed & KEY_LEFTARROW) {
+        //     editor_state_move_left(*editor);
+        // }
 
-        if (ctx->key_pressed & KEY_LEFTARROW) {
-            editor_state_move_left(*editor);
-        }
+        // if (ctx->key_pressed & KEY_RIGHTARROW) {
+        //     editor_state_move_right(*editor);
+        // }
+        // */
 
-        if (ctx->key_pressed & KEY_RIGHTARROW) {
-            editor_state_move_right(*editor);
-        }
-        */
-
-        if (event->key_pressed & KEY_TAB) {
-            *focus = FocusState::FSK_Palette;
-        }
+        // if (event->key_pressed & KEY_TAB) {
+        //     *focus = FocusState::FSK_Palette;
+        // }
     }
 
     mu_layout_begin_column(ctx);
@@ -962,7 +988,7 @@ int main(int argc, char** argv) {
             task_manager_run_timeslice(&g_task_manager,
                                        &g_command_palette_state,
                                        &g_bottom_line_state, &g_index);
-        } while (clock() - clock_begin < TARGET_CLOCKS_PER_FRAME * 0.5);
+        } while (clock() - clock_begin < TARGET_CLOCKS_PER_FRAME * 0.1);
 
         /* process frame */
         mu_finalize_events_begin_draw(ctx);
