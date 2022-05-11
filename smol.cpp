@@ -67,6 +67,11 @@ struct Loc {
         }
         return eq;
     }
+
+    bool operator !=(const Loc &other) const {
+        return !(*this == other);
+    }
+
     bool valid() const {
         assert(file != nullptr);
         assert(ix >= 0);
@@ -313,19 +318,19 @@ const TrieNode* index_lookup(const TrieNode* index, const char* key, int len) {
 }
 
 enum {
-    MU_KEY_SHIFT = (1 << 0),
-    MU_KEY_CTRL = (1 << 1),
-    MU_KEY_ALT = (1 << 2),
-    MU_KEY_BACKSPACE = (1 << 3),
-    MU_KEY_RETURN = (1 << 4),
-    MU_KEY_LEFTARROW = (1 << 5),
-    MU_KEY_RIGHTARROW = (1 << 6),
-    MU_KEY_UPARROW = (1 << 7),
-    MU_KEY_DOWNARROW = (1 << 8),
-    MU_KEY_COMMAND_PALETTE = (1 << 9),
-    MU_KEY_TAB = (1 << 10),
-    MU_KEY_D = (1 << 11),
-    MU_KEY_U = (1 << 12),
+    KEY_SHIFT = (1 << 0),
+    KEY_CTRL = (1 << 1),
+    KEY_ALT = (1 << 2),
+    KEY_BACKSPACE = (1 << 3),
+    KEY_RETURN = (1 << 4),
+    KEY_LEFTARROW = (1 << 5),
+    KEY_RIGHTARROW = (1 << 6),
+    KEY_UPARROW = (1 << 7),
+    KEY_DOWNARROW = (1 << 8),
+    KEY_COMMAND_PALETTE = (1 << 9),
+    KEY_TAB = (1 << 10),
+    KEY_D = (1 << 11),
+    KEY_U = (1 << 12),
 };
 
 struct EventState {
@@ -360,16 +365,33 @@ struct EventState {
 };
 
 // TODO: rename to viewer.
-struct ViewerState {
-    void set_focus(Loc new_focus) {
-        if (focus != new_focus) {
-            focus = cur = new_focus;
+static const int LINELEN = 120;
+static const int MAXLINES = 1e6;
+struct Cursor {
+    int line; int col;
+};
+
+
+struct EditorState {
+    Cursor cursor;
+    char text[MAXLINES][LINELEN];
+    int linelen[MAXLINES];
+    EditorState() {
+        for(int line = 0; line < MAXLINES; ++line){
+            linelen[line] = 0;
+            for(int col = 0; col < LINELEN; ++col) {
+                text[line][col] = 0;
+            }
         }
     }
+};
 
-    // at file focus
-    Loc focus;
-    Loc cur;  // current line we are viewing.
+void cursor_up(EditorState *editor) {
+    editor->cursor.line = std::max<int>(0, editor->cursor.line - 1);
+};
+
+void cursor_down(EditorState *editor) {
+    editor->cursor.line = std::min<int>(MAXLINES - 1, editor->cursor.line + 1);
 };
 
 struct BottomlineState {
@@ -391,8 +413,8 @@ struct CommandPaletteState {
     int selected_ix = 0;
 };
 
-mu_Id editor_state_mu_id(mu_Context* ctx, ViewerState* view) {
-    return mu_get_id(ctx, &view, sizeof(ViewerState));
+mu_Id editor_state_mu_id(mu_Context* ctx, EditorState* editor) {
+    return mu_get_id(ctx, editor, sizeof(EditorState));
 }
 
 void mu_draw_cursor(mu_Context* ctx, mu_Rect* r) {
@@ -405,29 +427,29 @@ void mu_draw_cursor(mu_Context* ctx, mu_Rect* r) {
 }
 
 void mu_command_palette(mu_Context* ctx, EventState* event,
-                        ViewerState *view,
+                        EditorState *editor,
                         CommandPaletteState* pal, FocusState* focus) {
     assert(pal->selected_ix <= (int)pal->matches.size());
 
     const bool focused = *focus == FocusState::FSK_Palette;
-    if (mu_begin_window(ctx, "CMD", mu_Rect(0, 0, 1400, 720 / 2))) {
+    if (mu_begin_window(ctx, "ERROR", mu_Rect(0, 0, 1400, 0))) {
         if (focused) {
-            if (event->key_pressed & MU_KEY_BACKSPACE) {
+            if (event->key_pressed & KEY_BACKSPACE) {
                 pal->sequence_number++;
                 pal->input.resize(std::max<int>(0, pal->input.size() - 1));
             }
 
             // TODO: Ask @codelegend for clean way to handle this.
-            if (event->key_pressed & MU_KEY_DOWNARROW) {
+            if (event->key_pressed & KEY_DOWNARROW) {
                 pal->selected_ix = std::min<int>(pal->selected_ix + 1,
                                                  pal->matches.size() - 1);
             }
 
-            if (event->key_pressed & MU_KEY_UPARROW) {
+            if (event->key_pressed & KEY_UPARROW) {
                 pal->selected_ix = std::max<int>(0, pal->selected_ix - 1);
             }
 
-            if (event->key_pressed & MU_KEY_RETURN) {
+            if (event->key_pressed & KEY_RETURN) {
                 *focus = FocusState::FSK_Viewer;
             }
 
@@ -440,7 +462,8 @@ void mu_command_palette(mu_Context* ctx, EventState* event,
             }
 
             if (pal->selected_ix < pal->matches.size()) {
-                view->set_focus(pal->matches[pal->selected_ix]);
+                assert(false && "do not know how to focus");
+                // editor->set_focus(pal->matches[pal->selected_ix]);
             }
         }
 
@@ -548,56 +571,50 @@ void mu_bottom_line(mu_Context* ctx, BottomlineState* s) {
                  ctx->_style.colors[MU_COLOR_TEXT]);
 }
 
-void mu_viewer(mu_Context* ctx, EventState* event, ViewerState* view,
+void mu_editor(mu_Context* ctx, EventState* event, EditorState* editor,
                FocusState* focus, const CommandPaletteState* pal) {
-    if (view->focus.ix == -1) {
-        return;
-    }
-    assert(view->focus.ix != -1);
-
     int width = -1;
     mu_Font font = ctx->_style.font;
 
-    mu_Id id = editor_state_mu_id(ctx, view);
+    mu_Id id = editor_state_mu_id(ctx, editor);
     mu_Container* cnt = mu_get_current_container(ctx);
     assert(cnt && "must be within container");
 
-    mu_update_control(ctx, id, cnt->body, MU_OPT_HOLDFOCUS);
     const bool focused = *focus == FocusState::FSK_Viewer;
 
     const int N_SCROLL_STEPS = 3;
-    if (event->key_pressed & MU_KEY_D) {
+    if (event->key_pressed & KEY_D) {
         for (int i = 0; i < N_SCROLL_STEPS; ++i) {
-            view->cur = view->cur.down();
+            cursor_down(editor);
         }
     }
 
-    if (event->key_pressed & MU_KEY_U) {
+    if (event->key_pressed & KEY_U) {
         for (int i = 0; i < N_SCROLL_STEPS; ++i) {
-            view->cur = view->cur.up();
+            cursor_up(editor);
         }
     }
 
     if (focused) {
         /*
-        if (ctx->key_pressed & MU_KEY_UPARROW) {
-            editor_state_move_up(*view);
+        if (ctx->key_pressed & KEY_UPARROW) {
+            editor_state_move_up(*editor);
         }
 
-        if (ctx->key_pressed & MU_KEY_DOWNARROW) {
-            editor_state_move_down(*view);
+        if (ctx->key_pressed & KEY_DOWNARROW) {
+            editor_state_move_down(*editor);
         }
 
-        if (ctx->key_pressed & MU_KEY_LEFTARROW) {
-            editor_state_move_left(*view);
+        if (ctx->key_pressed & KEY_LEFTARROW) {
+            editor_state_move_left(*editor);
         }
 
-        if (ctx->key_pressed & MU_KEY_RIGHTARROW) {
-            editor_state_move_right(*view);
+        if (ctx->key_pressed & KEY_RIGHTARROW) {
+            editor_state_move_right(*editor);
         }
         */
 
-        if (event->key_pressed & MU_KEY_TAB) {
+        if (event->key_pressed & KEY_TAB) {
             *focus = FocusState::FSK_Palette;
         }
     }
@@ -606,66 +623,47 @@ void mu_viewer(mu_Context* ctx, EventState* event, ViewerState* view,
     mu_layout_row(ctx, 1, &width, ctx->text_height(font));
     // mu_draw_control_frame(ctx, id, cnt->body, MU_COLOR_BASE, 0);
 
-    const int START_LINES_UP = 3;
     const int NLINES = 40;
-    Loc left = view->cur;
-    for (int i = 0; i < START_LINES_UP; ++i) {
-        left = left.up();
-    }
-    left = left.start_of_cur_line();
-    assert(left.line == 0 || view->cur.line - left.line == START_LINES_UP);
 
     const mu_Color GRAY_COLOR = {.r = 180, .g = 180, .b = 180, .a = 255};
     const mu_Color WHITE_COLOR = {.r = 255, .g = 255, .b = 255, .a = 255};
     const mu_Color BLUE_COLOR = {.r = 187, .g = 222, .b = 251, .a = 255};
 
-    for (int line_offset = 0; line_offset < NLINES; ++line_offset) {
+    const int line_begin = std::max<int>(0, editor->cursor.line - NLINES/2);
+    for (int line = line_begin; line < line_begin + NLINES; ++line) {
         mu_Rect r = mu_layout_next(ctx);
 
-        // have exhausted text.
-        if (left.eof()) {
-            break;
-        }
-
-        const bool SELECTED = view->focus.line == left.line;
+        const bool SELECTED = editor->cursor.line == line;
 
         // 1. draw line number
-        char lineno_str[12];
-        sprintf(lineno_str, "%d", left.line);
-        const int total_len = 5;
+        static const int MAX_LINE_STRLEN = 5;
+        char lineno_str[MAX_LINE_STRLEN];
+        sprintf(lineno_str, "%d", line);
         const int num_len = strlen(lineno_str);
-        assert(num_len < total_len);
-        for (int i = num_len; i < total_len; ++i) {
+        assert(strlen(lineno_str) < MAX_LINE_STRLEN-1);
+        for (int i = num_len; i < MAX_LINE_STRLEN; ++i) {
             lineno_str[i] = ' ';
         }
-        lineno_str[total_len] = 0;
-        lineno_str[total_len + 1] = 0;
+        lineno_str[MAX_LINE_STRLEN-1] = 0;
 
         mu_draw_text(ctx, font, lineno_str, strlen(lineno_str),
                      mu_vec2(r.x, r.y), SELECTED ? WHITE_COLOR : GRAY_COLOR);
         r.x += ctx->text_width(font, lineno_str, strlen(lineno_str));
-
-        // line number width
-        assert(!left.eof());
-
-        const Loc right = left.end_of_cur_line();
-        assert(right.line == left.line);
-        assert(right.eof() || is_newline(right.get()));
-
         r.h = ctx->text_height(font);
         // draw text.
-        for (Loc cur = left; cur.ix < right.ix; cur = cur.advance()) {
-            if (focused && view->focus.line == cur.line &&
-                view->focus.col == cur.col) {
+        for (int col = 0; col < editor->linelen[line]; ++col) {
+            if (focused && line == editor->cursor.line &&
+                    col == editor->cursor.col) {
                 mu_draw_cursor(ctx, &r);
             }
 
             // the character is inside the query bounds.
-            bool AT_QUERY =
-                pal->selected_ix < pal->matches.size() &&
-                cur.ix >= pal->matches[pal->selected_ix].ix &&
-                cur.ix < pal->matches[pal->selected_ix].ix + pal->input.size();
-            const char c = cur.get();
+            bool AT_QUERY = false;
+            // bool AT_QUERY =
+            //     pal->selected_ix < pal->matches.size() &&
+            //     cur.ix >= pal->matches[pal->selected_ix].ix &&
+            //     cur.ix < pal->matches[pal->selected_ix].ix + pal->input.size();
+            const char c = editor->text[line][col];
             mu_draw_text(ctx, font, &c, 1, mu_vec2(r.x, r.y),
                          AT_QUERY   ? BLUE_COLOR
                          : SELECTED ? WHITE_COLOR
@@ -674,30 +672,30 @@ void mu_viewer(mu_Context* ctx, EventState* event, ViewerState* view,
         }
 
         // cursor
-        if (view->focus.line == line_offset && view->focus.col == right.col) {
-            mu_draw_cursor(ctx, &r);
-        }
+        // if (editor->cursor.line == line && editor->focus.col == right.col) {
+        //     mu_draw_cursor(ctx, &r);
+        // }
 
         // next line;
-        assert(right.advance().eof() || left.line + 1 == right.advance().line);
-        left = right.advance();
+        // assert(right.advance().eof() || left.line + 1 == right.advance().line);
+        // left = right.advance();
     }
 
     mu_layout_end_column(ctx);
 }
 
-static void viewer_window(mu_Context* ctx, 
-        EventState *event, ViewerState* view,
+static void editor_window(mu_Context* ctx, 
+        EventState *event, EditorState* editor,
                           BottomlineState* bot, FocusState* focus,
                           const CommandPaletteState* pal) {
     const int window_opts = MU_OPT_NOTITLE | MU_OPT_NOCLOSE | MU_OPT_NORESIZE;
     // if (mu_begin_window_ex(ctx, "Editor", mu_rect(0, 0, 1400, 768),
     // window_opts)) {
-    if (mu_begin_window(ctx, "Editor", mu_rect(0, 720 / 2, 1400, 720 / 2))) {
+    if (mu_begin_window(ctx, "Editor", mu_rect(0, 0, 1400, 720))) {
         int width_row[] = {-1};
         mu_layout_row(ctx, 1, width_row, -25);
         mu_layout_row(ctx, 1, width_row, -1);
-        mu_viewer(ctx, event, view, focus, pal);
+        mu_editor(ctx, event, editor, focus, pal);
         mu_bottom_line(ctx, bot);
         mu_end_window(ctx);
     }
@@ -715,25 +713,25 @@ int button_map(int sdl_key) {
 }
 
 int key_map(int sdl_key) {
-    if (sdl_key == SDLK_LSHIFT) return MU_KEY_SHIFT;
-    if (sdl_key == SDLK_RSHIFT) return MU_KEY_SHIFT;
+    if (sdl_key == SDLK_LSHIFT) return KEY_SHIFT;
+    if (sdl_key == SDLK_RSHIFT) return KEY_SHIFT;
     if (sdl_key == SDLK_LCTRL) {
-        return MU_KEY_CTRL;
+        return KEY_CTRL;
     }
-    if (sdl_key == SDLK_RCTRL) return MU_KEY_CTRL;
-    if (sdl_key == SDLK_LALT) return MU_KEY_ALT;
-    if (sdl_key == SDLK_RALT) return MU_KEY_ALT;
-    if (sdl_key == SDLK_RETURN) return MU_KEY_RETURN;
-    if (sdl_key == SDLK_UP) return MU_KEY_UPARROW;
-    if (sdl_key == SDLK_DOWN) return MU_KEY_DOWNARROW;
-    if (sdl_key == SDLK_LEFT) return MU_KEY_LEFTARROW;
-    if (sdl_key == SDLK_RIGHT) return MU_KEY_RIGHTARROW;
-    if (sdl_key == SDLK_BACKSPACE) return MU_KEY_BACKSPACE;
-    if (sdl_key == SDLK_p) return MU_KEY_COMMAND_PALETTE;
-    if (sdl_key == SDLK_d) return MU_KEY_D;
-    if (sdl_key == SDLK_u) return MU_KEY_U;
+    if (sdl_key == SDLK_RCTRL) return KEY_CTRL;
+    if (sdl_key == SDLK_LALT) return KEY_ALT;
+    if (sdl_key == SDLK_RALT) return KEY_ALT;
+    if (sdl_key == SDLK_RETURN) return KEY_RETURN;
+    if (sdl_key == SDLK_UP) return KEY_UPARROW;
+    if (sdl_key == SDLK_DOWN) return KEY_DOWNARROW;
+    if (sdl_key == SDLK_LEFT) return KEY_LEFTARROW;
+    if (sdl_key == SDLK_RIGHT) return KEY_RIGHTARROW;
+    if (sdl_key == SDLK_BACKSPACE) return KEY_BACKSPACE;
+    if (sdl_key == SDLK_p) return KEY_COMMAND_PALETTE;
+    if (sdl_key == SDLK_d) return KEY_D;
+    if (sdl_key == SDLK_u) return KEY_U;
     if (sdl_key == SDLK_TAB) {
-        return MU_KEY_TAB;
+        return KEY_TAB;
     }
     return 0;
 }
@@ -748,114 +746,108 @@ static int text_width(mu_Font font, const char* text, int len) {
 static int text_height(mu_Font font) { return r_get_text_height(); }
 
 struct TaskManager {
-    bool indexing;  // tracks whether index is being built.
-    std::filesystem::recursive_directory_iterator
-        ix_it;                     // iterator to index walker.
-    std::optional<Loc> index_loc;  // current location being read by index.
-
-    int query_sequence_number;
-
+    int query_sequence_number = 0;
     // pairs of trie nodes, and how much of the query length they match.
     std::stack<const TrieNode*> query_walk_stack;
 };
 
-void task_manager_explore_directory_timeslice(TaskManager* s,
-                                              BottomlineState* bot) {
-    assert(s->indexing);
-    if (s->ix_it == std::filesystem::end(s->ix_it)) {
-        bot->info = "DONE indexing;";
-        bot->info += "#nodes: " + std::to_string(TrieNode::NUM_TRIE_NODES);
-        bot->info += " #edges: " + std::to_string(TrieEdge::NUM_TRIE_EDGES);
-        s->indexing = false;
-        return;
-    };
-
-    const std::filesystem::path curp = *s->ix_it;
-    if ((curp.string().find(".git") != std::string::npos) ||
-        (curp.string().find("test") != std::string::npos)) {
-        s->ix_it++;
-        return;
-    }
-
-    s->ix_it++;  // next file.
-    bot->info = "walking: " + curp.string();
-    if (!std::filesystem::is_regular_file(curp)) {
-        return;
-    }
-
-    assert(std::filesystem::is_regular_file(curp));
-    FILE* fp = fopen(curp.c_str(), "rb");
-    assert(fp && "unable to open file");
-
-    fseek(fp, 0, SEEK_END);
-    const int total_size = ftell(fp);
-
-    s->index_loc = Loc();
-    s->index_loc->file = new File(curp.string(), total_size);
-    s->index_loc->file->buf = new char[total_size];
-    s->index_loc->ix = 0;
-    s->index_loc->line = 0;
-    s->index_loc->col = 0;
-
-    fseek(fp, 0, SEEK_SET);
-    const int nread = fread(s->index_loc->file->buf, 1, total_size, fp);
-    fclose(fp);
-    assert(nread == total_size && "unable to read file");
-    bot->info = "ix: " + curp.string() + " | 0%";
-}
-
-void task_manager_index_file_timeslice(TaskManager* s, BottomlineState* bot,
-                                       TrieNode* g_index) {
-    assert(s->index_loc);
-    assert(s->index_loc->valid());
-
-    while (!s->index_loc->eof() && is_whitespace(s->index_loc->get())) {
-        s->index_loc = s->index_loc->advance();
-    }
-
-    assert(s->index_loc->valid());
-    if (s->index_loc->eof()) {
-        bot->info = "DONE indexing " + s->index_loc->file->path;
-        s->index_loc = {};
-        return;
-    }
-    assert(!is_whitespace(s->index_loc->get()));
-
-    Loc eol = *s->index_loc;
-    static const int MAX_SUFFIX_LEN = 80;
-    static const int MAX_NGRAMS = 3;
-    int ngrams = 0;
-    while (!eol.eof() && !is_newline(eol.get()) && ngrams < MAX_NGRAMS &&
-           (eol.ix - s->index_loc->ix) <= MAX_SUFFIX_LEN) {
-        if (is_whitespace(eol.get())) {
-            ngrams++;
-        }
-        eol = eol.advance();
-    }
-
-    for (Loc sufloc = *s->index_loc; sufloc.ix < eol.ix;
-         sufloc = sufloc.advance()) {
-        const int len = eol.ix - sufloc.ix;
-        // TODO: this seems stupid, what additional data does sufloc even
-        // provide? (line, col) info? the edge seems to contain most of the
-        // info?
-        index_add(g_index, sufloc.file, sufloc.ix, len, sufloc);
-        assert(!sufloc.eof());
-    }
-
-    const float percent =
-        100.0 * ((float)s->index_loc->ix / s->index_loc->file->len);
-    bot->info = "ix: ";
-    bot->info += s->index_loc->file->path;
-    bot->info += " | ";
-    bot->info += std::to_string(percent);
-    bot->info += " | ";
-    for (int i = s->index_loc->ix; i < eol.ix; ++i) {
-        bot->info += s->index_loc->file->buf[i];
-    }
-
-    s->index_loc = eol;
-}
+// void task_manager_explore_directory_timeslice(TaskManager* s,
+//                                               BottomlineState* bot) {
+//     assert(s->indexing);
+//     if (s->ix_it == std::filesystem::end(s->ix_it)) {
+//         bot->info = "DONE indexing;";
+//         bot->info += "#nodes: " + std::to_string(TrieNode::NUM_TRIE_NODES);
+//         bot->info += " #edges: " + std::to_string(TrieEdge::NUM_TRIE_EDGES);
+//         s->indexing = false;
+//         return;
+//     };
+// 
+//     const std::filesystem::path curp = *s->ix_it;
+//     if ((curp.string().find(".git") != std::string::npos) ||
+//         (curp.string().find("test") != std::string::npos)) {
+//         s->ix_it++;
+//         return;
+//     }
+// 
+//     s->ix_it++;  // next file.
+//     bot->info = "walking: " + curp.string();
+//     if (!std::filesystem::is_regular_file(curp)) {
+//         return;
+//     }
+// 
+//     assert(std::filesystem::is_regular_file(curp));
+//     FILE* fp = fopen(curp.c_str(), "rb");
+//     assert(fp && "unable to open file");
+// 
+//     fseek(fp, 0, SEEK_END);
+//     const int total_size = ftell(fp);
+// 
+//     s->index_loc = Loc();
+//     s->index_loc->file = new File(curp.string(), total_size);
+//     s->index_loc->file->buf = new char[total_size];
+//     s->index_loc->ix = 0;
+//     s->index_loc->line = 0;
+//     s->index_loc->col = 0;
+// 
+//     fseek(fp, 0, SEEK_SET);
+//     const int nread = fread(s->index_loc->file->buf, 1, total_size, fp);
+//     fclose(fp);
+//     assert(nread == total_size && "unable to read file");
+//     bot->info = "ix: " + curp.string() + " | 0%";
+// }
+// 
+// void task_manager_index_file_timeslice(TaskManager* s, BottomlineState* bot,
+//                                        TrieNode* g_index) {
+//     assert(s->index_loc);
+//     assert(s->index_loc->valid());
+// 
+//     while (!s->index_loc->eof() && is_whitespace(s->index_loc->get())) {
+//         s->index_loc = s->index_loc->advance();
+//     }
+// 
+//     assert(s->index_loc->valid());
+//     if (s->index_loc->eof()) {
+//         bot->info = "DONE indexing " + s->index_loc->file->path;
+//         s->index_loc = {};
+//         return;
+//     }
+//     assert(!is_whitespace(s->index_loc->get()));
+// 
+//     Loc eol = *s->index_loc;
+//     static const int MAX_SUFFIX_LEN = 80;
+//     static const int MAX_NGRAMS = 3;
+//     int ngrams = 0;
+//     while (!eol.eof() && !is_newline(eol.get()) && ngrams < MAX_NGRAMS &&
+//            (eol.ix - s->index_loc->ix) <= MAX_SUFFIX_LEN) {
+//         if (is_whitespace(eol.get())) {
+//             ngrams++;
+//         }
+//         eol = eol.advance();
+//     }
+// 
+//     for (Loc sufloc = *s->index_loc; sufloc.ix < eol.ix;
+//          sufloc = sufloc.advance()) {
+//         const int len = eol.ix - sufloc.ix;
+//         // TODO: this seems stupid, what additional data does sufloc even
+//         // provide? (line, col) info? the edge seems to contain most of the
+//         // info?
+//         index_add(g_index, sufloc.file, sufloc.ix, len, sufloc);
+//         assert(!sufloc.eof());
+//     }
+// 
+//     const float percent =
+//         100.0 * ((float)s->index_loc->ix / s->index_loc->file->len);
+//     bot->info = "ix: ";
+//     bot->info += s->index_loc->file->path;
+//     bot->info += " | ";
+//     bot->info += std::to_string(percent);
+//     bot->info += " | ";
+//     for (int i = s->index_loc->ix; i < eol.ix; ++i) {
+//         bot->info += s->index_loc->file->buf[i];
+//     }
+// 
+//     s->index_loc = eol;
+// }
 
 // TODO: I need some way to express that TaskManager is only alowed to insert
 // into pal->matches. must be monotonic.
@@ -893,14 +885,14 @@ void task_manager_query_timeslice(TaskManager* s, CommandPaletteState* pal,
 
 void task_manager_run_timeslice(TaskManager* s, CommandPaletteState* pal,
                                 BottomlineState* bot, TrieNode* g_index) {
-    if (s->indexing) {
-        if (!s->index_loc) {
-            task_manager_explore_directory_timeslice(s, bot);
-        } else {
-            task_manager_index_file_timeslice(s, bot, g_index);
-        }
-    }
-    task_manager_query_timeslice(s, pal, g_index);
+    // if (s->indexing) {
+    //     if (!s->index_loc) {
+    //         task_manager_explore_directory_timeslice(s, bot);
+    //     } else {
+    //         task_manager_index_file_timeslice(s, bot, g_index);
+    //     }
+    // }
+    // task_manager_query_timeslice(s, pal, g_index);
 }
 
 int main(int argc, char** argv) {
@@ -909,14 +901,7 @@ int main(int argc, char** argv) {
     // TODO: figure out the grammar.
     TSParser* parser = ts_parser_new();
 
-    const std::filesystem::path root_path(argc == 1 ? "/home/bollu/work/lean4"
-                                                    : argv[1]);
-    std::cout << "root_path: " << root_path << "\n";
-
     TaskManager g_task_manager;
-    g_task_manager.indexing = true;
-    g_task_manager.ix_it =
-        std::filesystem::recursive_directory_iterator(root_path);
 
     TrieNode g_index;
 
@@ -924,7 +909,7 @@ int main(int argc, char** argv) {
     g_bottom_line_state.info = "WELCOME";
 
     CommandPaletteState g_command_palette_state;
-    ViewerState g_viewer_state;
+    EditorState *g_editor_state = new EditorState();
 
     FocusState g_focus_state = FocusState::FSK_Palette;
 
@@ -981,10 +966,10 @@ int main(int argc, char** argv) {
 
         /* process frame */
         mu_finalize_events_begin_draw(ctx);
-        viewer_window(ctx, &g_event_state, &g_viewer_state, &g_bottom_line_state,
+        editor_window(ctx, &g_event_state, g_editor_state, &g_bottom_line_state,
                       &g_focus_state, &g_command_palette_state);
-        mu_command_palette(ctx, &g_event_state, &g_viewer_state, &g_command_palette_state,
-                           &g_focus_state);
+        // mu_command_palette(ctx, &g_event_state, &g_editor_state, &g_command_palette_state,
+        //                    &g_focus_state);
         mu_end(ctx);
 
         /* render */
