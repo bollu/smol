@@ -443,6 +443,21 @@ Cursor cursor_delete_till_end_of_line(EditorState *editor, Cursor cursor) {
     return cursor;
 }
 
+Cursor cursor_delete_backward(EditorState *editor, Cursor cursor, int n) {
+    assert(n >= 0);
+    const int begin = std::max<int>(0, cursor.col - n);
+    for(int i = begin; i < editor->linelen[cursor.line] - n; ++i) {
+        editor->text[cursor.line][i] = editor->text[cursor.line][n+i];
+    }
+    for(int i = editor->linelen[cursor.line]-n; i < editor->linelen[cursor.line]; ++i) {
+        editor->text[cursor.line][i] = 0;
+    }
+
+    editor->linelen[cursor.line] -= n;
+    cursor.col -= n;
+    return cursor;
+}
+
 struct BottomlineState {
     std::string info;
 };
@@ -663,6 +678,10 @@ void mu_editor(mu_Context* ctx, EventState* event, EditorState* editor,
         if (event->key_pressed & KEY_RIGHTARROW) {
             cursor.col = std::min<int>(cursor.col + 1,
                     editor->linelen[cursor.line]);
+        }
+
+        if (event->key_pressed & KEY_BACKSPACE) {
+            cursor = cursor_delete_backward(editor, cursor, 1);
         }
 
         if (event->key_pressed & KEY_RETURN) {
