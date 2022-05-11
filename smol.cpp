@@ -607,17 +607,17 @@ void mu_editor(mu_Context* ctx, EventState* event, EditorState* editor,
     mu_Container* cnt = mu_get_current_container(ctx);
     assert(cnt && "must be within container");
 
-    const int N_SCROLL_STEPS = 3;
+    const int N_SCROLL_STEPS = 15;
     const bool focused = true; 
     if (focused) {
         cursor_insert_str(editor, event->input_text);
-        if (event->key_pressed & KEY_D) {
+        if (event->key_held_down & KEY_CTRL && event->key_pressed & KEY_D) {
             for (int i = 0; i < N_SCROLL_STEPS; ++i) {
                 cursor_down(editor);
             }
         }
 
-        if (event->key_pressed & KEY_U) {
+        if (event->key_held_down & KEY_CTRL && event->key_pressed & KEY_U) {
             for (int i = 0; i < N_SCROLL_STEPS; ++i) {
                 cursor_up(editor);
             }
@@ -631,18 +631,15 @@ void mu_editor(mu_Context* ctx, EventState* event, EditorState* editor,
             cursor_down(editor);
         }
 
-        // if (ctx->key_pressed & KEY_LEFTARROW) {
-        //     editor_state_move_left(*editor);
-        // }
 
-        // if (ctx->key_pressed & KEY_RIGHTARROW) {
-        //     editor_state_move_right(*editor);
-        // }
-        // */
+        if (event->key_pressed & KEY_LEFTARROW) {
+            editor->cursor.col = std::max<int>(editor->cursor.col - 1, 0);
+        }
 
-        // if (event->key_pressed & KEY_TAB) {
-        //     *focus = FocusState::FSK_Palette;
-        // }
+        if (event->key_pressed & KEY_RIGHTARROW) {
+            editor->cursor.col = std::min<int>(editor->cursor.col + 1, 
+                    editor->linelen[editor->cursor.line]);
+        }
     }
 
     mu_layout_begin_column(ctx);
@@ -676,8 +673,8 @@ void mu_editor(mu_Context* ctx, EventState* event, EditorState* editor,
                      mu_vec2(r.x, r.y), SELECTED ? WHITE_COLOR : GRAY_COLOR);
         r.x += ctx->text_width(font, lineno_str, strlen(lineno_str));
         r.h = ctx->text_height(font);
-        // draw text.
-        for (int col = 0; col < editor->linelen[line]; ++col) {
+        // draw text. yes less than or equals to enable writing of cursor.
+        for (int col = 0; col <= editor->linelen[line]; ++col) {
             if (focused && line == editor->cursor.line &&
                     col == editor->cursor.col) {
                 mu_draw_cursor(ctx, &r);
@@ -741,7 +738,7 @@ int button_map(int sdl_key) {
 int key_map(int sdl_key) {
     if (sdl_key == SDLK_LSHIFT) return KEY_SHIFT;
     if (sdl_key == SDLK_RSHIFT) return KEY_SHIFT;
-    if (sdl_key == SDLK_LCTRL) {
+    if (sdl_key == SDLK_LCTRL || sdl_key == SDLK_RCTRL) {
         return KEY_CTRL;
     }
     if (sdl_key == SDLK_RCTRL) return KEY_CTRL;
