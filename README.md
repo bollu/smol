@@ -19,3 +19,8 @@ A tiny language with tiny memory footprint for human size **prototyping**.
 - https://github.com/benwr/glean
 - https://github.com/Kindelia/HVM/blob/master/HOW.md
 - https://github.com/lucy/tewi-font
+
+##### Common Lisp IDE information
+
+- [swank:encode-message](https://github.com/slime/slime/blob/c5342a3086367c371e8d88b3140e6db070365d43/swank.lisp#L865-L870)
+- [swank:write-message](https://github.com/slime/slime/blob/68c58c0194ff03cd147fcec99f0ee90ba9178875/swank/rpc.lisp#L100-L107)
