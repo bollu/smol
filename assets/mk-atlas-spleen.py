@@ -174,10 +174,15 @@ def serialize_atlas(ATLAS: Atlas) -> str:
     # to have C process it as hex.
     out = ""
 
-    out += "static const int atlas_text_width = %s;\n" % (ATLAS.bitmaps[0].width, )
-    out += "static const int atlas_text_height = %s;\n\n" % (ATLAS.bitmaps[0].height, )
-    out += "enum { ATLAS_WHITE = MU_ICON_MAX, ATLAS_FONT };\n"
-    out += "enum { ATLAS_WIDTH = %s, ATLAS_HEIGHT = %s };\n" % (ATLAS.width, ATLAS.height)
+    out += "const int atlas_text_width = %s;\n" % (ATLAS.bitmaps[0].width, )
+    out += "const int atlas_text_height = %s;\n\n" % (ATLAS.bitmaps[0].height, )
+    out += "#define ATLAS_WHITE (MU_ICON_MAX)\n"
+    # #define for array indexing, static const for exporting.
+    out += "const int ATLAS_WHITE = ATLAS_WHITE_;\n"
+    out += "#define ATLAS_FONT (ATLAS_WHITE_+1)\n"
+    out += "const int ATLAS_FONT = ATLAS_FONT_;\n"
+    out += "const int ATLAS_WIDTH = %s;\n" % (ATLAS.width)
+    out += "const int ATLAS_HEIGHT = %s;\n" % (ATLAS.height, )
     
     # static unsigned char atlas_texture[ATLAS_WIDTH * ATLAS_HEIGHT] = {
     # 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -330,7 +335,7 @@ if __name__ == "__main__":
     ATLAS = make_atlas(BITMAPS, ATLAS_WIDTH, ATLAS_HEIGHT, BITMAP_HEIGHT)
     OUT = serialize_atlas(ATLAS)
     # with open("../microui/atlas.inl", "w") as f:
-    with open("atlas.inl", "w") as f:
+    with open("atlas.c", "w") as f:
         f.write(OUT)
-    print("copy atlas.inl to ../microui/atlas.inl")
+    print("copy atlas.inl to ../microui/atlas.c")
 
