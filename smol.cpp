@@ -24,6 +24,7 @@
 #include <time.h>
 #include <tree_sitter/api.h>
 
+
 // TODO: move this into a struct.
 int width = -1;
 int height = -1;
@@ -375,11 +376,13 @@ struct EventState {
 // TODO: rename to viewer.
 static const int MAXLINELEN = 120;
 static const int MAXLINES = 1e6;
+
 struct Cursor {
   int line = 0;
   int col = 0;
 };
 
+// the state of the editor is a geodesic?
 struct EditorState {
   char text[MAXLINES][MAXLINELEN];
   int linelen[MAXLINES];
@@ -392,6 +395,7 @@ struct EditorState {
     }
   }
 };
+
 
 // struct EditorState {
 //     Cursor cursor;
@@ -506,12 +510,9 @@ void editor_append_line(EditorState *editor, int line, char *s, int len) {
   }
 
   const int oldlen = editor->linelen[line];
-  editor->linelen[line] = len;
+  editor->linelen[line] += len;
   for (int i = 0; i < len; ++i) {
-    editor->text[line][i] = s[i];
-  }
-  for (int i = editor->linelen[line]; i < oldlen; ++i) {
-    editor->text[line][i] = 0;
+    editor->text[line][oldlen+i] = s[i];
   }
 }
 
@@ -774,10 +775,10 @@ void mu_editor(mu_Context *ctx, EventState *event, EditorState *editor,
 	// does that give us the correct implementation of cursors? I think so!
 	if (cursor.line == 0) { return; }
 	assert(cursor.line > 0);
-        // join previous line into currentline.
-	editor_append_line(editor, cursor.line - 1, editor->text[cursor.line], editor->linelen[cursor.line]);
-	editor_remove_line(editor, cursor.line);
+    // join previous line into currentline.
 	cursor = cursor_dollar(editor, cursor_up(editor, cursor));
+	editor_append_line(editor, cursor.line, editor->text[cursor.line+1], editor->linelen[cursor.line+1]);
+	editor_remove_line(editor, cursor.line+1);
 
       } else {
         cursor = cursor_delete_backward(editor, cursor, 1);
