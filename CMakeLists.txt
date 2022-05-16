@@ -2,17 +2,19 @@
 # project specific logic here.
 #
 cmake_minimum_required (VERSION 3.8)
+
 set (CMAKE_CXX_STANDARD 20)
+set (CMAKE_C_STANDARD 99)
 
 project ("smol")
 find_package(SDL2 REQUIRED)
 find_package(OpenGL REQUIRED)
 # Add source to this project's executable.
 add_executable (smol
-	"microui/microui-source.c"
-	"microui/renderer.c"
+	"microui-source.c"
+	"atlas.c"
 	"smol.cpp"
-    "tree-sitter/lib/src/lib.c"
+        "tree-sitter/lib/src/lib.c"
 )
 target_include_directories(smol  PUBLIC "sdl/include")
 target_include_directories(smol  PUBLIC "microui")
