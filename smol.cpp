@@ -919,9 +919,6 @@ void mu_editor(mu_Context *ctx, EventState *event, EditorState *editor,
 static void editor_window(mu_Context *ctx, EventState *event,
                           EditorState *editor, BottomlineState *bot,
                           FocusState *focus, const CommandPaletteState *pal) {
-    const int window_opts = MU_OPT_NOTITLE | MU_OPT_NOCLOSE | MU_OPT_NORESIZE;
-    // if (mu_begin_window_ex(ctx, "Editor", mu_rect(0, 0, 1400, 768),
-    // window_opts)) {
     if (mu_begin_window(ctx, "Editor", mu_rect(0, 0, width, height))) {
         int width_row[] = {-1};
         mu_layout_row(ctx, 1, width_row, -25);
@@ -1391,6 +1388,16 @@ int main(int argc, char **argv) {
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
             switch (e.type) {
+                case SDL_WINDOWEVENT: 
+                    {
+                        if (e.window.event == SDL_WINDOWEVENT_RESIZED) {
+                            width = e.window.data1;
+                            height = e.window.data2;
+                            printf("window resized. width: %d | height: %d\n", width, height);
+                            fflush(stdout);
+                        }
+                    }
+                    break;
                 case SDL_QUIT:
                     exit(0);
                     break;
