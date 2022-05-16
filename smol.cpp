@@ -24,6 +24,10 @@
 #include <time.h>
 #include <tree_sitter/api.h>
 
+// TODO: move this into a struct.
+int width = -1;
+int height = -1;
+
 const int TARGET_FRAMES_PER_SECOND = 15.0;
 const clock_t TARGET_CLOCKS_PER_FRAME =
     CLOCKS_PER_SEC / TARGET_FRAMES_PER_SECOND;
@@ -587,7 +591,7 @@ void mu_command_palette(mu_Context *ctx, EventState *event, EditorState *editor,
   assert(pal->selected_ix <= (int)pal->matches.size());
 
   const bool focused = *focus == FocusState::FSK_Palette;
-  if (mu_begin_window(ctx, "ERROR", mu_Rect(0, 0, 1400, 0))) {
+  if (mu_begin_window(ctx, "ERROR", mu_Rect(0, 0, width, 0))) {
     if (focused) {
       if (event->key_pressed & KEY_BACKSPACE) {
         pal->sequence_number++;
@@ -723,7 +727,6 @@ void mu_editor(mu_Context *ctx, EventState *event, EditorState *editor,
                FocusState *focus, const CommandPaletteState *pal) {
   static Cursor cursor;
 
-  int width = -1;
   mu_Font font = ctx->_style.font;
 
   mu_Id id = editor_state_mu_id(ctx, editor);
@@ -794,10 +797,11 @@ void mu_editor(mu_Context *ctx, EventState *event, EditorState *editor,
   }
 
   mu_layout_begin_column(ctx);
+  int width = -1;
   mu_layout_row(ctx, 1, &width, ctx->text_height(font));
   // mu_draw_control_frame(ctx, id, cnt->body, MU_COLOR_BASE, 0);
 
-  const int NLINES = 40;
+  const int NLINES = height / ctx->text_height(font);
 
   const mu_Color GRAY_COLOR = {.r = 180, .g = 180, .b = 180, .a = 255};
   const mu_Color WHITE_COLOR = {.r = 255, .g = 255, .b = 255, .a = 255};
@@ -863,7 +867,7 @@ static void editor_window(mu_Context *ctx, EventState *event,
   const int window_opts = MU_OPT_NOTITLE | MU_OPT_NOCLOSE | MU_OPT_NORESIZE;
   // if (mu_begin_window_ex(ctx, "Editor", mu_rect(0, 0, 1400, 768),
   // window_opts)) {
-  if (mu_begin_window(ctx, "Editor", mu_rect(0, 0, 1400, 720))) {
+  if (mu_begin_window(ctx, "Editor", mu_rect(0, 0, width, height))) {
     int width_row[] = {-1};
     mu_layout_row(ctx, 1, width_row, -25);
     mu_layout_row(ctx, 1, width_row, -1);
@@ -1089,8 +1093,6 @@ static GLfloat vert_buf[BUFFER_SIZE * 8];
 static GLubyte color_buf[BUFFER_SIZE * 16];
 static GLuint index_buf[BUFFER_SIZE * 6];
 
-static const int width = 1400;
-static const int height = 768;
 static int buf_idx; // WTF?
 
 SDL_Window *window;
@@ -1107,6 +1109,14 @@ extern mu_Rect atlas[];
 }
 
 void r_init(void) {
+  SDL_DisplayMode DM;
+  SDL_GetCurrentDisplayMode(0, &DM);
+  width = DM.w;
+  height = DM.h;
+
+  assert(width >= 0);
+  assert(height >= 0);
+
   /* init SDL window */
   window =
       SDL_CreateWindow(NULL, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
