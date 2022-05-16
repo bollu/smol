@@ -339,6 +339,11 @@ enum {
     KEY_TAB = (1 << 10),
     KEY_D = (1 << 11),
     KEY_U = (1 << 12),
+    KEY_H = (1 << 13),
+    KEY_J = (1 << 14),
+    KEY_K = (1 << 15),
+    KEY_L = (1 << 16),
+    KEY_C = (1 << 17),
 };
 
 struct EventState {
@@ -583,13 +588,21 @@ mu_Id editor_state_mu_id(mu_Context *ctx, EditorState *editor) {
     return mu_get_id(ctx, &editor, sizeof(EditorState *));
 }
 
-void mu_draw_cursor(mu_Context *ctx, mu_Rect *r) {
+void mu_draw_cursor(mu_Context *ctx, mu_Rect *r, EditMode mode) {
     mu_Rect cursor = *r;
-    mu_Font font = ctx->_style.font;
-    const int width = r_get_text_width("|", 1);
-    mu_draw_text(ctx, font, "|", 1, mu_vec2(r->x - width / 2, r->y),
-                 ctx->_style.colors[MU_COLOR_TEXT]);
-    r->w += width;
+    mu_Rect cursor_new = *r;
+
+    cursor_new.h = r_get_text_height();
+    cursor_new.w = mode == EditMode::Insert ? 3 : r_get_text_width(" ", 1);
+    mu_draw_rect(ctx, cursor_new, mu_Color(0, 255, 0, 255));
+
+    // mu_Font font = ctx->_style.font;
+    // const char *c = mode == EditMode::Insert ? "|" : "-";
+    // const int width = r_get_text_width(c, 1);
+    // mu_draw_rect(ctx, 
+    // mu_draw_text(ctx, font, c, 1, mu_vec2(r->x - width / 2, r->y),
+    //              ctx->_style.colors[MU_COLOR_TEXT]);
+    // r->w += width;
 }
 
 void mu_command_palette(mu_Context *ctx, EventState *event, EditorState *editor,
@@ -750,7 +763,13 @@ void mu_editor(mu_Context *ctx, EventState *event, EditorState *editor,
     const bool focused = true;
     if (focused) {
         for (int i = 0; i < strlen(event->input_text); ++i) {
+
             const char c = event->input_text[i];
+
+            // if (event->key_held_down & KEY_CTRL && c == 'c') {
+            //     editor->mode = EditMode::Normal;
+            // }
+
             if (!(event->key_held_down & KEY_CTRL) &&
                 editor->mode == EditMode::Insert) {
                 cursor = cursor_insert_str(editor, cursor, &c, 1);
@@ -759,139 +778,143 @@ void mu_editor(mu_Context *ctx, EventState *event, EditorState *editor,
                     editor->mode = EditMode::Insert;
                 }
             }
+        }
 
-            if (event->key_held_down & KEY_CTRL && event->key_pressed & KEY_D) {
-                for (int i = 0; i < N_SCROLL_STEPS; ++i) {
-                    cursor = cursor_down(editor, cursor);
-                }
-            }
 
-            if (event->key_held_down & KEY_CTRL && event->key_pressed & KEY_U) {
-                for (int i = 0; i < N_SCROLL_STEPS; ++i) {
-                    cursor = cursor_up(editor, cursor);
-                }
-            }
+        if (event->key_held_down & KEY_CTRL && event->key_pressed & KEY_C) {
+            editor->mode = EditMode::Normal;
+        }
 
-            if (event->key_pressed & KEY_UPARROW) {
-                cursor = cursor_up(editor, cursor);
-            }
-
-            if (event->key_pressed & KEY_DOWNARROW) {
+        if (event->key_held_down & KEY_CTRL && event->key_pressed & KEY_D) {
+            for (int i = 0; i < N_SCROLL_STEPS; ++i) {
                 cursor = cursor_down(editor, cursor);
             }
+        }
 
-            if (event->key_pressed & KEY_LEFTARROW) {
-                cursor.col = std::max<int>(cursor.col - 1, 0);
-            }
-
-            if (event->key_pressed & KEY_RIGHTARROW) {
-                cursor.col =
-                    std::min<int>(cursor.col + 1, editor->linelen[cursor.line]);
-            }
-
-            if (event->key_pressed & KEY_BACKSPACE) {
-                if (cursor.col == 0) {
-                    // TODO: think of how this codde can be cleaned up!
-                    // In terms of differential geometry :)
-                    // If we attach the space back on itself twisted (ala mobius
-                    // strip), does that give us the correct implementation of
-                    // cursors? I think so!
-                    if (cursor.line == 0) {
-                        return;
-                    }
-                    assert(cursor.line > 0);
-                    // join previous line into currentline.
-                    cursor = cursor_dollar(editor, cursor_up(editor, cursor));
-                    editor_append_line(editor, cursor.line,
-                                       editor->text[cursor.line + 1],
-                                       editor->linelen[cursor.line + 1]);
-                    editor_remove_line(editor, cursor.line + 1);
-
-                } else {
-                    cursor = cursor_delete_backward(editor, cursor, 1);
-                }
-            }
-
-            if (event->key_pressed & KEY_RETURN) {
-                int len = editor->linelen[cursor.line] - cursor.col;
-                char *s = editor->text[cursor.line] + cursor.col;
-                // copy text to next line
-                Cursor new_cursor = cursor_down(editor, cursor);
-                new_cursor.col = 0;
-                cursor_insert_str(editor, new_cursor, s, len);
-                cursor_delete_till_end_of_line(editor, cursor);
-                cursor = new_cursor;
+        if (event->key_held_down & KEY_CTRL && event->key_pressed & KEY_U) {
+            for (int i = 0; i < N_SCROLL_STEPS; ++i) {
+                cursor = cursor_up(editor, cursor);
             }
         }
 
-        mu_layout_begin_column(ctx);
-        int width = -1;
-        mu_layout_row(ctx, 1, &width, ctx->text_height(font));
-        // mu_draw_control_frame(ctx, id, cnt->body, MU_COLOR_BASE, 0);
-
-        const int NLINES = height / ctx->text_height(font);
-
-        const mu_Color GRAY_COLOR = {.r = 180, .g = 180, .b = 180, .a = 255};
-        const mu_Color WHITE_COLOR = {.r = 255, .g = 255, .b = 255, .a = 255};
-        const mu_Color BLUE_COLOR = {.r = 187, .g = 222, .b = 251, .a = 255};
-
-        const int line_begin = std::max<int>(0, cursor.line - NLINES / 2);
-        for (int line = line_begin; line < line_begin + NLINES; ++line) {
-            mu_Rect r = mu_layout_next(ctx);
-
-            const bool SELECTED = cursor.line == line;
-
-            // 1. draw line number
-            static const int MAX_LINE_STRLEN = 5;
-            char lineno_str[MAX_LINE_STRLEN];
-            sprintf(lineno_str, "%d", line);
-            const int num_len = strlen(lineno_str);
-            assert(strlen(lineno_str) < MAX_LINE_STRLEN - 1);
-            for (int i = num_len; i < MAX_LINE_STRLEN; ++i) {
-                lineno_str[i] = ' ';
-            }
-            lineno_str[MAX_LINE_STRLEN - 1] = 0;
-
-            mu_draw_text(ctx, font, lineno_str, strlen(lineno_str),
-                         mu_vec2(r.x, r.y),
-                         SELECTED ? WHITE_COLOR : GRAY_COLOR);
-            r.x += ctx->text_width(font, lineno_str, strlen(lineno_str));
-            r.h = ctx->text_height(font);
-            // draw text. yes less than or equals to enable writing of cursor.
-            for (int col = 0; col <= editor->linelen[line]; ++col) {
-                if (focused && line == cursor.line && col == cursor.col) {
-                    mu_draw_cursor(ctx, &r);
-                }
-
-                // the character is inside the query bounds.
-                bool AT_QUERY = false;
-                // bool AT_QUERY =
-                //     pal->selected_ix < pal->matches.size() &&
-                //     cur.ix >= pal->matches[pal->selected_ix].ix &&
-                //     cur.ix < pal->matches[pal->selected_ix].ix +
-                //     pal->input.size();
-                const char c = editor->text[line][col];
-                mu_draw_text(ctx, font, &c, 1, mu_vec2(r.x, r.y),
-                             AT_QUERY   ? BLUE_COLOR
-                             : SELECTED ? WHITE_COLOR
-                                        : GRAY_COLOR);
-                r.x += ctx->text_width(font, &c, 1);
-            }
-
-            // cursor
-            // if (editor->cursor.line == line && editor->focus.col ==
-            // right.col) {
-            //     mu_draw_cursor(ctx, &r);
-            // }
-
-            // next line;
-            // assert(right.advance().eof() || left.line + 1 ==
-            // right.advance().line); left = right.advance();
+        if (event->key_pressed & KEY_UPARROW || event->key_pressed & KEY_K) {
+            cursor = cursor_up(editor, cursor);
         }
 
-        mu_layout_end_column(ctx);
+        if (event->key_pressed & KEY_DOWNARROW || event->key_pressed & KEY_J) {
+            cursor = cursor_down(editor, cursor);
+        }
+
+        if (event->key_pressed & KEY_LEFTARROW || event->key_pressed & KEY_H) {
+            cursor.col = std::max<int>(cursor.col - 1, 0);
+        }
+
+        if (event->key_pressed & KEY_RIGHTARROW || event->key_pressed & KEY_L) {
+            cursor.col =
+                std::min<int>(cursor.col + 1, editor->linelen[cursor.line]);
+        }
+
+        if (editor->mode == EditMode::Insert && event->key_pressed & KEY_BACKSPACE) {
+            if (cursor.col == 0) {
+                // TODO: think of how this codde can be cleaned up!
+                // In terms of differential geometry :)
+                // If we attach the space back on itself twisted (ala mobius
+                // strip), does that give us the correct implementation of
+                // cursors? I think so!
+                if (cursor.line == 0) {
+                    return;
+                }
+                assert(cursor.line > 0);
+                // join previous line into currentline.
+                cursor = cursor_dollar(editor, cursor_up(editor, cursor));
+                editor_append_line(editor, cursor.line,
+                                   editor->text[cursor.line + 1],
+                                   editor->linelen[cursor.line + 1]);
+                editor_remove_line(editor, cursor.line + 1);
+
+            } else {
+                cursor = cursor_delete_backward(editor, cursor, 1);
+            }
+        }
+
+        if (editor->mode==EditMode::Insert && event->key_pressed & KEY_RETURN) {
+            int len = editor->linelen[cursor.line] - cursor.col;
+            char *s = editor->text[cursor.line] + cursor.col;
+            // copy text to next line
+            Cursor new_cursor = cursor_down(editor, cursor);
+            new_cursor.col = 0;
+            cursor_insert_str(editor, new_cursor, s, len);
+            cursor_delete_till_end_of_line(editor, cursor);
+            cursor = new_cursor;
+        }
     }
-};
+
+    mu_layout_begin_column(ctx);
+    int width = -1;
+    mu_layout_row(ctx, 1, &width, ctx->text_height(font));
+    // mu_draw_control_frame(ctx, id, cnt->body, MU_COLOR_BASE, 0);
+
+    const int NLINES = height / ctx->text_height(font);
+
+    const mu_Color GRAY_COLOR = {.r = 180, .g = 180, .b = 180, .a = 255};
+    const mu_Color WHITE_COLOR = {.r = 255, .g = 255, .b = 255, .a = 255};
+    const mu_Color BLUE_COLOR = {.r = 187, .g = 222, .b = 251, .a = 255};
+
+    const int line_begin = std::max<int>(0, cursor.line - NLINES / 2);
+    for (int line = line_begin; line < line_begin + NLINES; ++line) {
+        mu_Rect r = mu_layout_next(ctx);
+
+        const bool SELECTED = cursor.line == line;
+
+        // 1. draw line number
+        static const int MAX_LINE_STRLEN = 5;
+        char lineno_str[MAX_LINE_STRLEN];
+        sprintf(lineno_str, "%d", line);
+        const int num_len = strlen(lineno_str);
+        assert(strlen(lineno_str) < MAX_LINE_STRLEN - 1);
+        for (int i = num_len; i < MAX_LINE_STRLEN; ++i) {
+            lineno_str[i] = ' ';
+        }
+        lineno_str[MAX_LINE_STRLEN - 1] = 0;
+
+        mu_draw_text(ctx, font, lineno_str, strlen(lineno_str),
+                     mu_vec2(r.x, r.y), SELECTED ? WHITE_COLOR : GRAY_COLOR);
+        r.x += ctx->text_width(font, lineno_str, strlen(lineno_str));
+        r.h = ctx->text_height(font);
+        // draw text. yes less than or equals to enable writing of cursor.
+        for (int col = 0; col <= editor->linelen[line]; ++col) {
+            if (focused && line == cursor.line && col == cursor.col) {
+                mu_draw_cursor(ctx, &r, editor->mode);
+            }
+
+            // the character is inside the query bounds.
+            bool AT_QUERY = false;
+            // bool AT_QUERY =
+            //     pal->selected_ix < pal->matches.size() &&
+            //     cur.ix >= pal->matches[pal->selected_ix].ix &&
+            //     cur.ix < pal->matches[pal->selected_ix].ix +
+            //     pal->input.size();
+            const char c = editor->text[line][col];
+            mu_draw_text(ctx, font, &c, 1, mu_vec2(r.x, r.y),
+                         AT_QUERY   ? BLUE_COLOR
+                         : SELECTED ? WHITE_COLOR
+                                    : GRAY_COLOR);
+            r.x += ctx->text_width(font, &c, 1);
+        }
+
+        // cursor
+        // if (editor->cursor.line == line && editor->focus.col ==
+        // right.col) {
+        //     mu_draw_cursor(ctx, &r);
+        // }
+
+        // next line;
+        // assert(right.advance().eof() || left.line + 1 ==
+        // right.advance().line); left = right.advance();
+    }
+
+    mu_layout_end_column(ctx);
+}
 
 static void editor_window(mu_Context *ctx, EventState *event,
                           EditorState *editor, BottomlineState *bot,
@@ -937,7 +960,12 @@ int key_map(int sdl_key) {
     if (sdl_key == SDLK_BACKSPACE) return KEY_BACKSPACE;
     if (sdl_key == SDLK_p) return KEY_COMMAND_PALETTE;
     if (sdl_key == SDLK_d) return KEY_D;
+    if (sdl_key == SDLK_c) return KEY_C;
     if (sdl_key == SDLK_u) return KEY_U;
+    if (sdl_key == SDLK_h) return KEY_H;
+    if (sdl_key == SDLK_j) return KEY_J;
+    if (sdl_key == SDLK_k) return KEY_K;
+    if (sdl_key == SDLK_l) return KEY_L;
     if (sdl_key == SDLK_TAB) {
         return KEY_TAB;
     }
@@ -1140,7 +1168,7 @@ void r_init(void) {
     /* init SDL window */
     window =
         SDL_CreateWindow(NULL, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
-                         width, height, SDL_WINDOW_OPENGL);
+                         width, height, SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
     SDL_GL_CreateContext(window);
 
     /* init gl */
