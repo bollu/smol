@@ -344,6 +344,9 @@ enum {
     KEY_K = (1 << 15),
     KEY_L = (1 << 16),
     KEY_C = (1 << 17),
+    KEY_A = (1 << 18),
+    KEY_E = (1 << 19),
+    KEY_I = (1 << 20),
 };
 
 struct EventState {
@@ -763,7 +766,6 @@ void mu_editor(mu_Context *ctx, EventState *event, EditorState *editor,
     const bool focused = true;
     if (focused) {
         for (int i = 0; i < strlen(event->input_text); ++i) {
-
             const char c = event->input_text[i];
 
             // if (event->key_held_down & KEY_CTRL && c == 'c') {
@@ -773,11 +775,19 @@ void mu_editor(mu_Context *ctx, EventState *event, EditorState *editor,
             if (!(event->key_held_down & KEY_CTRL) &&
                 editor->mode == EditMode::Insert) {
                 cursor = cursor_insert_str(editor, cursor, &c, 1);
-            } else if (editor->mode == EditMode::Normal) {
-                if (event->input_text[i] == 'i') {
-                    editor->mode = EditMode::Insert;
-                }
-            }
+            } 
+        }
+
+        if (editor->mode == EditMode::Normal && event->key_held_down & KEY_I) {
+            editor->mode = EditMode::Insert;
+        }
+
+        if (event->key_held_down & KEY_CTRL && event->key_pressed & KEY_A) {
+            cursor.col = 0;
+        }
+
+        if (event->key_held_down & KEY_CTRL && event->key_pressed & KEY_E) {
+            cursor = cursor_dollar(editor, cursor);
         }
 
 
@@ -797,7 +807,7 @@ void mu_editor(mu_Context *ctx, EventState *event, EditorState *editor,
             }
         }
 
-        if (event->key_pressed & KEY_UPARROW || event->key_pressed & KEY_K) {
+        if (event->key_pressed & KEY_UPARROW || (editor->mode == EditMode::Normal && event->key_pressed & KEY_K)) {
             cursor = cursor_up(editor, cursor);
         }
 
@@ -966,6 +976,9 @@ int key_map(int sdl_key) {
     if (sdl_key == SDLK_j) return KEY_J;
     if (sdl_key == SDLK_k) return KEY_K;
     if (sdl_key == SDLK_l) return KEY_L;
+    if (sdl_key == SDLK_i) return KEY_I;
+    if (sdl_key == SDLK_a) return KEY_A;
+    if (sdl_key == SDLK_e) return KEY_E;
     if (sdl_key == SDLK_TAB) {
         return KEY_TAB;
     }
