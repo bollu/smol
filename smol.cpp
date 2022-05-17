@@ -801,15 +801,15 @@ void mu_editor(mu_Context *ctx, EventState *event, EditorState *editor,
             cursor = cursor_up(editor, cursor);
         }
 
-        if (event->key_pressed & KEY_DOWNARROW || event->key_pressed & KEY_J) {
+        if (event->key_pressed & KEY_DOWNARROW || (editor->mode == EditMode::Normal && event->key_pressed & KEY_J)) {
             cursor = cursor_down(editor, cursor);
         }
 
-        if (event->key_pressed & KEY_LEFTARROW || event->key_pressed & KEY_H) {
+        if (event->key_pressed & KEY_LEFTARROW || (editor->mode == EditMode::Normal && event->key_pressed & KEY_H)) {
             cursor.col = std::max<int>(cursor.col - 1, 0);
         }
 
-        if (event->key_pressed & KEY_RIGHTARROW || event->key_pressed & KEY_L) {
+        if (event->key_pressed & KEY_RIGHTARROW || (editor->mode == EditMode::Normal && event->key_pressed & KEY_L)) {
             cursor.col =
                 std::min<int>(cursor.col + 1, editor->linelen[cursor.line]);
         }
@@ -856,6 +856,7 @@ void mu_editor(mu_Context *ctx, EventState *event, EditorState *editor,
 
     const int NLINES = height / ctx->text_height(font);
 
+    const mu_Color DARKGRAY_COLOR = {.r = 100, .g = 100, .b = 100, .a = 255};
     const mu_Color GRAY_COLOR = {.r = 180, .g = 180, .b = 180, .a = 255};
     const mu_Color WHITE_COLOR = {.r = 255, .g = 255, .b = 255, .a = 255};
     const mu_Color BLUE_COLOR = {.r = 187, .g = 222, .b = 251, .a = 255};
@@ -887,6 +888,8 @@ void mu_editor(mu_Context *ctx, EventState *event, EditorState *editor,
                 mu_draw_cursor(ctx, &r, editor->mode);
             }
 
+            // the character is within [NSCROLL] distance from cursor
+            bool IN_SCROLL_RANGE = abs(line - cursor.line) <= N_SCROLL_STEPS;
             // the character is inside the query bounds.
             bool AT_QUERY = false;
             // bool AT_QUERY =
@@ -898,7 +901,7 @@ void mu_editor(mu_Context *ctx, EventState *event, EditorState *editor,
             mu_draw_text(ctx, font, &c, 1, mu_vec2(r.x, r.y),
                          AT_QUERY   ? BLUE_COLOR
                          : SELECTED ? WHITE_COLOR
-                                    : GRAY_COLOR);
+                         : IN_SCROLL_RANGE ? GRAY_COLOR : DARKGRAY_COLOR);
             r.x += ctx->text_width(font, &c, 1);
         }
 
