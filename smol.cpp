@@ -1367,6 +1367,7 @@ void r_present(void) {
 }
 
 // === MAIN====
+// TODO: add open/save/load.
 
 int main(int argc, char **argv) {
     setlocale(LC_ALL, "");
