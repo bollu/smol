@@ -10,8 +10,9 @@ Read code for [`lite`](https://github.com/rxi/lite) to learn how to build a good
 ## Associated Programming Language
 
 A tiny language with tiny memory footprint for human size **prototyping**.
-- Functions and dicationries are interchangable. because `smol`.
-- immutable, purely functional. Inbuilt data structures for set, map, list. Because `smol`.
+- Only a single type, the table (https://beyondloom.com/decker/lil.html)
+- Functions/relations and tables are interchangable. because `smol`.
+- immutable, purely functional. Inbuilt data structure for table. Because `smol`.
 - Forces normal form. Only variables can occur at binding sites. Because `smol`.
 - Only small types allowed: A type may have at most `4096` inhabitants.
 - All data is represented with succinct data structures. Can do for `smol`.
